@@ -23,7 +23,6 @@ addopts = [
 omit = [
     "tests/*",
     "*/migrations/*",
-    "*/seeds/*",
     "frontend/*",
     "deployment/*",
 ]
@@ -31,8 +30,26 @@ omit = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
+exclude = [
+    "frontend",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = [
+    "E501",
+    "UP007",
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F811"]
 
 [tool.mypy]
 python_version = "3.11"

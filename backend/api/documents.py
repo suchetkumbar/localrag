@@ -61,14 +61,13 @@ async def upload_document(
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     db: DBSession,
-    status: str = "all",
+    status_filter: str = "all",   # was: status — shadowed fastapi.status import
 ) -> DocumentListResponse:
     q = select(DocumentModel).order_by(DocumentModel.created_at.desc())
-    if status != "all":
-        q = q.where(DocumentModel.status == status)
+    if status_filter != "all":
+        q = q.where(DocumentModel.status == status_filter)
     result = await db.execute(q)
     docs = result.scalars().all()
-
     return DocumentListResponse(
         documents=[DocumentOut.model_validate(d) for d in docs],
         total=len(docs),
