@@ -1,0 +1,183 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# LocalRAG — 100% local Docker Compose stack
+# ---------------------------------------------------------------------------
+# Services:
+#   backend   - FastAPI + MCP server (port 8000)
+#   frontend  - Next.js chat UI     (port 3000)
+#   ollama    - LLM runtime         (port 11434)
+#   prometheus - Metrics scraping   (port 9090)
+#   grafana   - Dashboards          (port 3001)
+# ---------------------------------------------------------------------------
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Ollama — local LLM runtime
+  # --------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: localrag-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # --------------------------------------------------------------------------
+  # Model pull — runs once to download required models
+  # --------------------------------------------------------------------------
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: localrag-model-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "ollama pull llama3 && ollama pull nomic-embed-text && echo 'Models ready'"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Backend — FastAPI application
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile.backend
+    container_name: localrag-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/app/data/chroma
+      - ./data/db:/app/data/db
+      - ./data/logs:/app/data/logs
+      - ./data/uploads:/app/data/uploads
+      - ./data/watch_folder:/app/data/watch_folder
+      - ./config/settings.yaml:/app/config/settings.yaml:ro
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - SQLITE_DB_PATH=/app/data/db/localrag.db
+      - WATCH_FOLDER=/app/data/watch_folder
+      - UPLOADS_FOLDER=/app/data/uploads
+      - LOG_FILE=/app/data/logs/app.log
+      - API_KEY_ENABLED=${API_KEY_ENABLED:-false}
+      - API_KEY=${API_KEY:-change-me}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
+  # --------------------------------------------------------------------------
+  # Frontend — Next.js chat UI
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile.frontend
+    container_name: localrag-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+
+  # --------------------------------------------------------------------------
+  # Prometheus — metrics collection
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: localrag-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    logging: *default-logging
+
+  # --------------------------------------------------------------------------
+  # Grafana — dashboards
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: localrag-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-localrag}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    depends_on:
+      - prometheus
+    logging: *default-logging
+
+volumes:
+  ollama_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  default:
+    name: localrag-network

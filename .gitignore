@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+coverage_html/
+htmlcov/
+
+# Data (never commit local data)
+data/chroma/
+data/db/
+data/logs/
+data/uploads/
+data/watch_folder/
+
+# Environment
+.env
+!.env.example
+
+# Node
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+*.log
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/

@@ -1,0 +1,40 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "e2e: end-to-end tests requiring live Ollama (deselect with '-m not e2e')",
+    "slow: slow tests",
+]
+addopts = [
+    "--cov=backend",
+    "--cov=mcp_server",
+    "--cov=database",
+    "--cov-report=term-missing",
+    "--cov-report=html:coverage_html",
+    "--cov-fail-under=75",
+    "-v",
+    "-m", "not e2e",
+]
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "*/migrations/*",
+    "*/seeds/*",
+    "frontend/*",
+    "deployment/*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true

@@ -1,0 +1,79 @@
+app:
+  name: "LocalRAG"
+  version: "1.0.0"
+  environment: "development"
+  debug: false
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false
+  workers: 1
+
+ollama:
+  base_url: "http://localhost:11434"
+  chat_model: "llama3"
+  embed_model: "nomic-embed-text"
+  timeout: 120
+  max_retries: 3
+  retry_delay: 2.0
+
+chroma:
+  persist_directory: "./data/chroma"
+  collection_name: "documents"
+  distance_function: "cosine"
+
+sqlite:
+  database_path: "./data/db/localrag.db"
+
+ingestion:
+  watch_folder: "./data/watch_folder"
+  uploads_folder: "./data/uploads"
+  chunk_size: 512
+  chunk_overlap: 64
+  supported_extensions:
+    - ".pdf"
+    - ".docx"
+    - ".md"
+    - ".txt"
+  poll_interval: 5
+
+retrieval:
+  top_k: 5
+  score_threshold: 0.3
+  rerank: false
+
+chat:
+  max_history_turns: 20
+  max_context_tokens: 3000
+  system_prompt: |
+    You are a helpful assistant that answers questions based on the provided documents.
+    Always cite your sources using the format [Source: filename, chunk N].
+    If the answer is not found in the documents, say so clearly.
+    Be concise and accurate.
+
+security:
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+  api_key_enabled: false
+  api_key_header: "X-API-Key"
+  rate_limit_requests: 100
+  rate_limit_window: 60
+
+logging:
+  level: "INFO"
+  format: "json"
+  file: "./data/logs/app.log"
+  rotation: "10 MB"
+  retention: "7 days"
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+
+mcp:
+  transport: "stdio"
+  server_name: "localrag-mcp"
+  server_version: "1.0.0"
