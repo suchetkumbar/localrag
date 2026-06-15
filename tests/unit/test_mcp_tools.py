@@ -6,10 +6,10 @@ Validates tool schemas, inputs, outputs, and error handling.
 from __future__ import annotations
 
 import json
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -22,8 +22,9 @@ def make_doc(
     status="ready",
     chunk_count=5,
 ):
-    from database.models import Document as DocumentModel
     from datetime import datetime
+
+    from database.models import Document as DocumentModel
 
     doc = MagicMock(spec=DocumentModel)
     doc.id = doc_id
@@ -46,8 +47,9 @@ def make_doc(
 
 @pytest.mark.asyncio
 async def test_tool_search_documents_returns_results():
+    from langchain_core.documents import Document as LCDocument
+
     from mcp_server.server import _tool_search_documents
-    from langchain.schema import Document as LCDocument
 
     mock_result = [
         (
@@ -195,8 +197,8 @@ async def test_tool_get_collection_stats():
 
 @pytest.mark.asyncio
 async def test_tool_ask_question_success():
-    from mcp_server.server import _tool_ask_question
     from backend.services.chat_service import ChatSource
+    from mcp_server.server import _tool_ask_question
 
     mock_sources = [
         ChatSource(filename="doc.pdf", chunk_index=0, page=1, score=0.9, snippet="snippet text")

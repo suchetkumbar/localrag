@@ -5,13 +5,13 @@ Uses mocks to avoid real filesystem/ChromaDB calls.
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
-from backend.services.ingestion_service import IngestionService, IngestionError
-from config.config import Settings, IngestionConfig, OllamaConfig, ChromaConfig
+import pytest
 
+from backend.services.ingestion_service import IngestionError, IngestionService
+from config.config import ChromaConfig, IngestionConfig, OllamaConfig, Settings
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -78,7 +78,7 @@ def test_unsupported_extension_raises(ingestion_svc):
 
 
 def test_chunk_documents_adds_metadata(ingestion_svc):
-    from langchain.schema import Document as LCDocument
+    from langchain_core.documents import Document as LCDocument
 
     doc = LCDocument(page_content="Hello world " * 100, metadata={"source": "test.txt"})
     chunks = ingestion_svc._chunk_documents([doc], doc_id="abc-123", filename="test.txt")
@@ -149,6 +149,7 @@ async def test_ingest_file_marks_error_on_failure(ingestion_svc, tmp_path):
 @pytest.mark.asyncio
 async def test_delete_document(ingestion_svc, mock_vector_store):
     import json
+
     from database.models import Document as DocumentModel
 
     doc = MagicMock(spec=DocumentModel)

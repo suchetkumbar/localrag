@@ -5,11 +5,12 @@ Unit tests for ChatService.
 from __future__ import annotations
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from backend.services.chat_service import ChatService, ChatSource
-from config.config import Settings, OllamaConfig, RetrievalConfig, ChatConfig
+from config.config import ChatConfig, OllamaConfig, RetrievalConfig, Settings
 
 
 @pytest.fixture
@@ -40,7 +41,7 @@ def chat_svc(settings, mock_vector_store):
 # ---------------------------------------------------------------------------
 
 def test_build_sources_deduplicates():
-    from langchain.schema import Document as LCDocument
+    from langchain_core.documents import Document as LCDocument
 
     svc = MagicMock()
     svc._build_sources = ChatService._build_sources.__get__(svc, ChatService)
@@ -82,7 +83,7 @@ def test_chat_source_to_dict():
 
 
 def test_build_messages_with_context(settings):
-    from langchain.schema import Document as LCDocument
+    from langchain_core.documents import Document as LCDocument
 
     svc = ChatService.__new__(ChatService)
     svc.settings = settings
@@ -112,7 +113,7 @@ def test_build_messages_no_context(settings):
 
 @pytest.mark.asyncio
 async def test_chat_persists_messages(chat_svc, mock_vector_store):
-    from langchain.schema import Document as LCDocument
+    from langchain_core.documents import Document as LCDocument
 
     mock_vector_store.similarity_search.return_value = [
         (

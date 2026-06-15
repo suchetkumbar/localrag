@@ -12,12 +12,11 @@ from __future__ import annotations
 import shutil
 import uuid
 from pathlib import Path
-from typing import List
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 
-from backend.api.deps import DBSession, IngestionDep, VectorStoreDep, SettingsDep
+from backend.api.deps import DBSession, IngestionDep, SettingsDep, VectorStoreDep
 from backend.models.schemas import CollectionStats, DocumentListResponse, DocumentOut
 from database.models import Document as DocumentModel
 
@@ -61,7 +60,7 @@ async def upload_document(
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     db: DBSession,
-    status_filter: str = "all",   # was: status — shadowed fastapi.status import
+    status_filter: str = "all",  # was: status; shadowed fastapi.status import
 ) -> DocumentListResponse:
     q = select(DocumentModel).order_by(DocumentModel.created_at.desc())
     if status_filter != "all":
@@ -96,7 +95,7 @@ async def delete_document(
     document_id: str,
     db: DBSession,
     ingestion_svc: IngestionDep,
-) -> None:
+) -> Response:
     result = await db.execute(
         select(DocumentModel).where(DocumentModel.id == document_id)
     )
@@ -105,3 +104,4 @@ async def delete_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     await ingestion_svc.delete_document(doc, db)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

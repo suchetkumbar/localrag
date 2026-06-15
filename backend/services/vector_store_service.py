@@ -6,12 +6,11 @@ All embedding calls go to the local Ollama instance.
 from __future__ import annotations
 
 import asyncio
-from typing import List, Tuple
 from functools import partial
 
 import structlog
-from langchain.schema import Document as LCDocument
 from langchain_chroma import Chroma
+from langchain_core.documents import Document as LCDocument
 from langchain_ollama import OllamaEmbeddings
 
 from config.config import Settings
@@ -61,14 +60,14 @@ class VectorStoreService:
     # Write operations
     # ------------------------------------------------------------------
 
-    async def add_documents(self, docs: List[LCDocument]) -> List[str]:
+    async def add_documents(self, docs: list[LCDocument]) -> list[str]:
         """Add documents and return their Chroma IDs."""
         loop = asyncio.get_event_loop()
         ids = await loop.run_in_executor(None, self.store.add_documents, docs)
         logger.debug("chunks_added", count=len(ids))
         return ids
 
-    async def delete_documents(self, ids: List[str]) -> None:
+    async def delete_documents(self, ids: list[str]) -> None:
         """Delete documents by Chroma IDs."""
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
@@ -85,13 +84,13 @@ class VectorStoreService:
         query: str,
         top_k: int = 5,
         score_threshold: float = 0.3,
-    ) -> List[Tuple[LCDocument, float]]:
+    ) -> list[tuple[LCDocument, float]]:
         """
         Return (document, score) pairs.
         Score is cosine similarity (higher = more similar).
         """
         loop = asyncio.get_event_loop()
-        results: List[Tuple[LCDocument, float]] = await loop.run_in_executor(
+        results: list[tuple[LCDocument, float]] = await loop.run_in_executor(
             None,
             partial(
                 self.store.similarity_search_with_relevance_scores,

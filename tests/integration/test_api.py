@@ -6,13 +6,13 @@ Uses httpx AsyncClient with the full app (mocked services).
 from __future__ import annotations
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from httpx import AsyncClient, ASGITransport
 
-from backend.main import create_app
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from backend.api import deps
-
+from backend.main import create_app
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -51,8 +51,9 @@ def mock_chat():
 @pytest.fixture
 def mock_session_svc():
     svc = AsyncMock()
-    from database.models import Session as SessionModel
     from datetime import datetime
+
+    from database.models import Session as SessionModel
 
     session = MagicMock(spec=SessionModel)
     session.id = "test-session-id"
@@ -83,7 +84,12 @@ async def client(mock_vector_store, mock_ingestion, mock_chat, mock_session_svc)
 
     # Override DB session
     async def noop_db():
-        yield AsyncMock()
+        db = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        result.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=result)
+        yield db
 
     app.dependency_overrides[deps.get_db_session] = noop_db
 
@@ -213,18 +219,8 @@ async def test_document_stats(client):
 
 @pytest.mark.asyncio
 async def test_list_documents_empty(client):
-    with patch("backend.api.documents.select") as mock_select:
-        mock_result = AsyncMock()
-        mock_result.scalars.return_value.all.return_value = []
-
-        async def fake_db_gen():
-            db = AsyncMock()
-            db.execute = AsyncMock(return_value=mock_result)
-            yield db
-
-        resp = await client.get("/api/documents")
-    # Just check it doesn't 500
-    assert resp.status_code in (200, 422, 500)
+    resp = await client.get("/api/documents")
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

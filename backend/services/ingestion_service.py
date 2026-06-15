@@ -10,26 +10,25 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import List, Tuple
 
 import structlog
-from langchain.schema import Document as LCDocument
 from langchain_community.document_loaders import (
-    PyPDFLoader,
     Docx2txtLoader,
+    PyPDFLoader,
     TextLoader,
     UnstructuredMarkdownLoader,
 )
+from langchain_core.documents import Document as LCDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.config import Settings
 from database.models import Document as DocumentModel
 from monitoring.metrics import (
+    CHUNKS_TOTAL,
     DOCUMENTS_INGESTED_TOTAL,
     DOCUMENTS_INGESTION_ERRORS_TOTAL,
     DOCUMENTS_TOTAL,
-    CHUNKS_TOTAL,
     INGESTION_DURATION_SECONDS,
 )
 
@@ -125,7 +124,7 @@ class IngestionService:
             log.error("ingestion_failed", error=str(exc), exc_info=True)
             raise IngestionError(f"Failed to ingest {file_path.name}: {exc}") from exc
 
-    def _load_file(self, file_path: Path) -> List[LCDocument]:
+    def _load_file(self, file_path: Path) -> list[LCDocument]:
         """Load a file using the appropriate LangChain loader."""
         suffix = file_path.suffix.lower()
         loaders = {
@@ -148,10 +147,10 @@ class IngestionService:
 
     def _chunk_documents(
         self,
-        docs: List[LCDocument],
+        docs: list[LCDocument],
         doc_id: str,
         filename: str,
-    ) -> List[LCDocument]:
+    ) -> list[LCDocument]:
         """Split documents into chunks and enrich metadata."""
         chunks = self.splitter.split_documents(docs)
 

@@ -10,9 +10,8 @@ DELETE /api/sessions/{id}        - delete session
 from __future__ import annotations
 
 import json
-from typing import List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 
 from backend.api.deps import DBSession, SessionSvcDep
 from backend.models.schemas import (
@@ -26,8 +25,8 @@ from backend.models.schemas import (
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
-@router.get("", response_model=List[SessionOut])
-async def list_sessions(db: DBSession, session_svc: SessionSvcDep) -> List[SessionOut]:
+@router.get("", response_model=list[SessionOut])
+async def list_sessions(db: DBSession, session_svc: SessionSvcDep) -> list[SessionOut]:
     sessions = await session_svc.list_sessions(db)
     return [SessionOut.model_validate(s) for s in sessions]
 
@@ -93,7 +92,8 @@ async def delete_session(
     session_id: str,
     db: DBSession,
     session_svc: SessionSvcDep,
-) -> None:
+) -> Response:
     deleted = await session_svc.delete_session(db, session_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -5,27 +5,25 @@ Run with: uvicorn backend.main:app --reload
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config.config import get_settings, ensure_directories
-from backend.services.logging_service import setup_logging
-from backend.services.vector_store_service import VectorStoreService
-from backend.services.ingestion_service import IngestionService
-from backend.services.chat_service import ChatService
-from backend.services.watcher_service import FolderWatcherService
 from backend.api import deps
 from backend.api.chat import router as chat_router
-from backend.api.sessions import router as sessions_router
 from backend.api.documents import router as documents_router
 from backend.api.health import router as health_router
+from backend.api.sessions import router as sessions_router
 from backend.middleware.middleware import APIKeyMiddleware, LoggingMiddleware
-from database.models import init_engine, create_tables
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from backend.services.chat_service import ChatService
+from backend.services.ingestion_service import IngestionService
+from backend.services.logging_service import setup_logging
+from backend.services.vector_store_service import VectorStoreService
+from backend.services.watcher_service import FolderWatcherService
+from config.config import ensure_directories, get_settings
+from database.models import create_tables, init_engine
 
 logger = structlog.get_logger(__name__)
 
@@ -44,7 +42,7 @@ async def lifespan(app: FastAPI):
     logger.info("app_starting", version="1.0.0", env=settings.app_env)
 
     # Initialize database
-    engine = init_engine(str(settings.sqlite_path))
+    init_engine(str(settings.sqlite_path))
     await create_tables()
     logger.info("database_ready")
 
@@ -60,7 +58,6 @@ async def lifespan(app: FastAPI):
     deps.set_services(vector_store, ingestion_svc, chat_svc)
 
     # Start folder watcher
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
     from database.models import _session_factory
 
     _watcher = FolderWatcherService(settings, ingestion_svc, _session_factory)
@@ -75,6 +72,7 @@ async def lifespan(app: FastAPI):
     if _watcher:
         await _watcher.stop()
     from database.models import close_engine
+
     await close_engine()
     logger.info("app_stopped")
 

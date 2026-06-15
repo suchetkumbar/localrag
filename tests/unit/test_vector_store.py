@@ -4,12 +4,13 @@ Unit tests for VectorStoreService.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
-from langchain.schema import Document as LCDocument
+from langchain_core.documents import Document as LCDocument
 
 from backend.services.vector_store_service import VectorStoreService
-from config.config import Settings, OllamaConfig, ChromaConfig
+from config.config import ChromaConfig, OllamaConfig, Settings
 
 
 @pytest.fixture

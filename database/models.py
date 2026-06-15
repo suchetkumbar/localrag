@@ -6,11 +6,10 @@ Uses SQLAlchemy with aiosqlite for fully async SQLite access.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
 
 from sqlalchemy import (
-    Column,
     DateTime,
     ForeignKey,
     Integer,
@@ -24,8 +23,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, relationship
-
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
 # Base
@@ -46,17 +44,17 @@ class Session(Base):
 
     __tablename__ = "sessions"
 
-    id: str = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    title: str = Column(String(255), nullable=True)
-    created_at: datetime = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: datetime = Column(
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
     )
 
-    messages: list[Message] = relationship(
+    messages: Mapped[list[Message]] = relationship(
         "Message", back_populates="session", cascade="all, delete-orphan", order_by="Message.created_at"
     )
 
@@ -69,14 +67,16 @@ class Message(Base):
 
     __tablename__ = "messages"
 
-    id: int = Column(Integer, primary_key=True, autoincrement=True)
-    session_id: str = Column(String(36), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
-    role: str = Column(String(16), nullable=False)  # "user" | "assistant"
-    content: str = Column(Text, nullable=False)
-    sources: str = Column(Text, nullable=True)  # JSON array of citations
-    created_at: datetime = Column(DateTime, server_default=func.now(), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array of citations
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
-    session: Session = relationship("Session", back_populates="messages")
+    session: Mapped[Session] = relationship("Session", back_populates="messages")
 
     def __repr__(self) -> str:
         return f"<Message id={self.id} role={self.role} session={self.session_id}>"
@@ -87,17 +87,19 @@ class Document(Base):
 
     __tablename__ = "documents"
 
-    id: str = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    filename: str = Column(String(512), nullable=False)
-    file_type: str = Column(String(16), nullable=False)
-    file_size: int = Column(Integer, nullable=False)
-    chunk_count: int = Column(Integer, nullable=False, default=0)
-    source: str = Column(String(16), nullable=False)  # "upload" | "watcher"
-    status: str = Column(String(16), nullable=False, default="processing")  # "processing"|"ready"|"error"
-    error_message: str = Column(Text, nullable=True)
-    chroma_ids: str = Column(Text, nullable=True)  # JSON array of chroma chunk IDs
-    created_at: datetime = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: datetime = Column(
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)  # "upload" | "watcher"
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="processing"
+    )  # "processing"|"ready"|"error"
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chroma_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array of chroma chunk IDs
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
         onupdate=func.now(),

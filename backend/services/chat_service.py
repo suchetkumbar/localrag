@@ -8,28 +8,28 @@ from __future__ import annotations
 
 import json
 import time
-from typing import AsyncIterator, List, Tuple
+from collections.abc import AsyncIterator
 
 import structlog
-from langchain.schema import Document as LCDocument
-from langchain_ollama import ChatOllama
-from langchain.schema.messages import (
+from langchain_core.documents import Document as LCDocument
+from langchain_core.messages import (
     AIMessage,
     HumanMessage,
     SystemMessage,
 )
+from langchain_ollama import ChatOllama
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.config import Settings
-from database.models import Message, Session as SessionModel
 from backend.services.vector_store_service import VectorStoreService
+from config.config import Settings
+from database.models import Message
 from monitoring.metrics import (
-    QUERIES_TOTAL,
-    QUERY_ERRORS_TOTAL,
-    QUERY_DURATION_SECONDS,
-    RETRIEVAL_CHUNKS_RETURNED,
     LLM_DURATION_SECONDS,
+    QUERIES_TOTAL,
+    QUERY_DURATION_SECONDS,
+    QUERY_ERRORS_TOTAL,
+    RETRIEVAL_CHUNKS_RETURNED,
 )
 
 logger = structlog.get_logger(__name__)
@@ -77,7 +77,7 @@ class ChatService:
         session_id: str,
         user_message: str,
         db_session: AsyncSession,
-    ) -> Tuple[str, List[ChatSource]]:
+    ) -> tuple[str, list[ChatSource]]:
         """
         Process a user message and return (answer, sources).
         Persists both user message and assistant response to SQLite.
@@ -166,8 +166,8 @@ class ChatService:
     # ------------------------------------------------------------------
 
     def _build_sources(
-        self, chunks_with_scores: List[Tuple[LCDocument, float]]
-    ) -> List[ChatSource]:
+        self, chunks_with_scores: list[tuple[LCDocument, float]]
+    ) -> list[ChatSource]:
         seen = set()
         sources = []
         for doc, score in chunks_with_scores:
@@ -188,9 +188,9 @@ class ChatService:
 
     def _build_messages(
         self,
-        history: List[Message],
+        history: list[Message],
         user_message: str,
-        chunks_with_scores: List[Tuple[LCDocument, float]],
+        chunks_with_scores: list[tuple[LCDocument, float]],
     ) -> list:
         cfg = self.settings.chat
         messages = [SystemMessage(content=cfg.system_prompt)]
@@ -232,7 +232,7 @@ class ChatService:
 
     async def _load_history(
         self, session_id: str, db_session: AsyncSession
-    ) -> List[Message]:
+    ) -> list[Message]:
         result = await db_session.execute(
             select(Message)
             .where(Message.session_id == session_id)
@@ -245,7 +245,7 @@ class ChatService:
         session_id: str,
         user_message: str,
         answer: str,
-        sources: List[ChatSource],
+        sources: list[ChatSource],
         db_session: AsyncSession,
     ) -> None:
         db_session.add(Message(session_id=session_id, role="user", content=user_message))
