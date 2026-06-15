@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'LocalRAG — Private Document Q&A',
+  title: 'LocalRAG - Private Document Q&A',
   description: '100% local AI document question answering',
 };
 

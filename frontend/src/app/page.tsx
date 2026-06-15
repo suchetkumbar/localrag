@@ -1,142 +1,221 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { PlusIcon, TrashIcon, FileTextIcon, SendIcon, PaperclipIcon, ChevronDownIcon, ServerIcon } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertTriangleIcon,
+  CheckCircle2Icon,
+  ChevronDownIcon,
+  CircleIcon,
+  DatabaseIcon,
+  FileTextIcon,
+  Loader2Icon,
+  MessageSquareIcon,
+  PanelRightIcon,
+  PaperclipIcon,
+  PlusIcon,
+  SendIcon,
+  ServerIcon,
+  TrashIcon,
+  UploadCloudIcon,
+  WifiIcon,
+  WifiOffIcon,
+  XIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sessionsApi, chatApi, documentsApi, healthApi } from '@/lib/api';
-import type { Session, Message, MessageSource, Document, HealthStatus } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
 
-// ---------------------------------------------------------------------------
-// Source citation badge
-// ---------------------------------------------------------------------------
+import { chatApi, documentsApi, healthApi, sessionsApi } from '@/lib/api';
+import type { Document, HealthStatus, Message, MessageSource, Session } from '@/lib/api';
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Something went wrong';
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function relativeDate(value: string | null): string {
+  if (!value) return 'Unknown';
+  return formatDistanceToNow(new Date(value), { addSuffix: true });
+}
 
 function SourceBadge({ source }: { source: MessageSource }) {
   const [open, setOpen] = useState(false);
+
   return (
-    <div className="inline-block mr-1 mb-1">
+    <span className="relative inline-flex">
       <button
-        onClick={() => setOpen(!open)}
-        className="text-xs px-2 py-0.5 rounded-full bg-sky-900/60 text-sky-300 border border-sky-700/50 hover:bg-sky-800/60 transition-colors flex items-center gap-1"
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex h-7 items-center gap-1 rounded-md border border-cyan-400/20 bg-cyan-400/10 px-2 text-xs font-medium text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/15"
+        title="View source"
       >
-        <FileTextIcon size={10} />
-        {source.filename}
-        <span className="text-sky-500">p.{source.page}</span>
-        <ChevronDownIcon size={10} className={open ? 'rotate-180' : ''} />
+        <FileTextIcon size={12} />
+        <span className="max-w-32 truncate">{source.filename}</span>
+        <span className="text-cyan-300/70">p.{source.page}</span>
+        <ChevronDownIcon size={12} className={open ? 'rotate-180 transition' : 'transition'} />
       </button>
       {open && (
-        <div className="mt-1 p-2 bg-gray-800 border border-gray-700 rounded text-xs text-gray-300 max-w-sm">
-          <div className="font-mono text-sky-400 mb-1">
-            {source.filename} · chunk {source.chunk_index} · score {source.score.toFixed(3)}
-          </div>
-          <p className="text-gray-400 line-clamp-4">{source.snippet}</p>
-        </div>
+        <span className="absolute left-0 top-9 z-20 block w-80 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-xs text-zinc-300 shadow-2xl shadow-black/40">
+          <span className="mb-2 block font-mono text-cyan-300">
+            chunk {source.chunk_index} / score {source.score.toFixed(3)}
+          </span>
+          <span className="line-clamp-5 text-zinc-400">{source.snippet}</span>
+        </span>
       )}
-    </div>
+    </span>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Message bubble
-// ---------------------------------------------------------------------------
-
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
+
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div className={`max-w-[85%] ${isUser ? 'order-2' : ''}`}>
+    <article className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[min(760px,86%)] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-2`}>
         <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+          className={
             isUser
-              ? 'bg-sky-600 text-white rounded-br-sm'
-              : 'bg-gray-800 text-gray-100 rounded-bl-sm border border-gray-700'
-          }`}
+              ? 'rounded-lg bg-cyan-500 px-4 py-3 text-sm leading-relaxed text-zinc-950 shadow-lg shadow-cyan-950/20'
+              : 'rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm leading-relaxed text-zinc-100 shadow-lg shadow-black/20'
+          }
         >
           {isUser ? (
-            <p>{message.content}</p>
+            <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
             <div className="prose-invert-custom">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
             </div>
           )}
         </div>
+
         {message.sources && message.sources.length > 0 && (
-          <div className="mt-1.5 px-1">
-            <span className="text-xs text-gray-500 mr-1">Sources:</span>
-            {message.sources.map((s, i) => (
-              <SourceBadge key={i} source={s} />
-            ))}
-          </div>
-        )}
-        <p className="text-xs text-gray-600 mt-1 px-1">
-          {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Typing indicator
-// ---------------------------------------------------------------------------
-
-function TypingIndicator({ streamText }: { streamText: string }) {
-  return (
-    <div className="flex justify-start mb-4">
-      <div className="max-w-[85%] bg-gray-800 border border-gray-700 rounded-2xl rounded-bl-sm px-4 py-3">
-        {streamText ? (
-          <div className="prose-invert-custom text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
-            <span className="inline-block w-2 h-4 bg-sky-400 ml-0.5 animate-pulse" />
-          </div>
-        ) : (
-          <div className="flex gap-1 items-center py-1">
-            {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                className="w-2 h-2 bg-sky-500 rounded-full animate-bounce"
-                style={{ animationDelay: `${i * 0.15}s` }}
+          <div className="flex flex-wrap gap-1.5">
+            {message.sources.map((source) => (
+              <SourceBadge
+                key={`${source.filename}-${source.chunk_index}-${source.page}`}
+                source={source}
               />
             ))}
           </div>
         )}
+
+        <span className="px-1 text-xs text-zinc-600">{relativeDate(message.created_at)}</span>
       </div>
+    </article>
+  );
+}
+
+function TypingIndicator({ streamText }: { streamText: string }) {
+  return (
+    <article className="flex justify-start">
+      <div className="max-w-[min(760px,86%)] rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 shadow-lg shadow-black/20">
+        {streamText ? (
+          <div className="prose-invert-custom">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
+            <span className="ml-1 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse rounded-full bg-cyan-300" />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-zinc-400">
+            <Loader2Icon size={14} className="animate-spin text-cyan-300" />
+            <span>Thinking</span>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function StatusPill({ health }: { health: HealthStatus | null }) {
+  const connected = Boolean(health?.ollama_connected);
+
+  return (
+    <div
+      className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs ${
+        connected
+          ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+          : 'border-red-400/20 bg-red-400/10 text-red-200'
+      }`}
+    >
+      {connected ? <WifiIcon size={13} /> : <WifiOffIcon size={13} />}
+      <span>{connected ? 'Ollama online' : 'Ollama offline'}</span>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Document panel
-// ---------------------------------------------------------------------------
+function DocumentStatus({ status }: { status: Document['status'] }) {
+  const styles = {
+    ready: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+    processing: 'border-amber-400/20 bg-amber-400/10 text-amber-200',
+    error: 'border-red-400/20 bg-red-400/10 text-red-200',
+  };
 
-function DocumentPanel({ onClose }: { onClose: () => void }) {
+  const Icon = status === 'ready' ? CheckCircle2Icon : status === 'error' ? AlertTriangleIcon : Loader2Icon;
+
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs ${styles[status]}`}>
+      <Icon size={12} className={status === 'processing' ? 'animate-spin' : ''} />
+      {status}
+    </span>
+  );
+}
+
+function DocumentPanel({
+  onClose,
+  onDocumentsChanged,
+  health,
+}: {
+  onClose: () => void;
+  onDocumentsChanged: () => void;
+  health: HealthStatus | null;
+}) {
   const [docs, setDocs] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const canUpload = health?.ollama_connected ?? true;
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await documentsApi.list();
-      setDocs(res.documents);
-    } catch (e: any) {
-      setError(e.message);
+      const result = await documentsApi.list();
+      setDocs(result.documents);
+      setError(null);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
+
+    if (!canUpload) {
+      setError('Ollama is offline. Start Ollama before uploading documents.');
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+
     setUploading(true);
     setError(null);
     try {
       await documentsApi.upload(file);
       await refresh();
-    } catch (err: any) {
-      setError(err.message);
+      onDocumentsChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -144,68 +223,133 @@ function DocumentPanel({ onClose }: { onClose: () => void }) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this document and all its chunks?')) return;
+    if (!window.confirm('Delete this document and its chunks?')) return;
+
     try {
       await documentsApi.delete(id);
       await refresh();
-    } catch (err: any) {
-      setError(err.message);
+      onDocumentsChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
     }
   };
 
   return (
-    <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-800">
-        <h2 className="font-semibold text-gray-100">Documents</h2>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">×</button>
-      </div>
-
-      <div className="p-3 border-b border-gray-800">
-        <label className={`flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-sm ${uploading ? 'border-gray-700 text-gray-600' : 'border-sky-700 text-sky-400 hover:border-sky-500 hover:bg-sky-900/20'}`}>
-          <PaperclipIcon size={14} />
-          {uploading ? 'Uploading…' : 'Upload document'}
-          <input ref={fileRef} type="file" className="hidden" accept=".pdf,.docx,.md,.txt" onChange={handleUpload} disabled={uploading} />
-        </label>
-        <p className="text-xs text-gray-600 text-center mt-1">PDF, DOCX, MD, TXT</p>
-        {error && <p className="text-xs text-red-400 mt-1 text-center">{error}</p>}
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {docs.length === 0 && (
-          <p className="text-center text-gray-600 text-sm mt-8">No documents yet.<br />Upload one or drop files<br />in the watch folder.</p>
-        )}
-        {docs.map((doc) => (
-          <div key={doc.id} className="flex items-start gap-2 p-2 rounded-lg bg-gray-800/50 hover:bg-gray-800 group">
-            <FileTextIcon size={14} className="text-sky-500 mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-200 truncate">{doc.filename}</p>
-              <p className="text-xs text-gray-500">
-                {doc.chunk_count} chunks · {(doc.file_size / 1024).toFixed(1)}KB
-              </p>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                doc.status === 'ready' ? 'bg-green-900/50 text-green-400' :
-                doc.status === 'error' ? 'bg-red-900/50 text-red-400' :
-                'bg-yellow-900/50 text-yellow-400'
-              }`}>
-                {doc.status}
-              </span>
-            </div>
-            <button
-              onClick={() => handleDelete(doc.id)}
-              className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all"
-            >
-              <TrashIcon size={12} />
-            </button>
+    <aside className="w-full border-l border-zinc-800 bg-zinc-950/95 md:w-[380px]">
+      <div className="flex h-full flex-col">
+        <header className="flex h-16 items-center justify-between border-b border-zinc-800 px-5">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Documents</h2>
+            <p className="text-xs text-zinc-500">{docs.length} indexed</p>
           </div>
-        ))}
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-md text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-100"
+            title="Close documents"
+          >
+            <XIcon size={16} />
+          </button>
+        </header>
+
+        <div className="border-b border-zinc-800 p-4">
+          <label
+            className={`group flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 text-center transition ${
+            uploading
+              ? 'border-zinc-700 bg-zinc-900/60 text-zinc-500'
+              : !canUpload
+                ? 'cursor-not-allowed border-red-400/20 bg-red-400/5 text-red-100'
+              : 'border-cyan-400/40 bg-cyan-400/[0.04] text-cyan-100 hover:border-cyan-300 hover:bg-cyan-400/[0.08]'
+            }`}
+          >
+            {uploading ? (
+              <Loader2Icon size={22} className="mb-2 animate-spin text-cyan-300" />
+            ) : (
+              <UploadCloudIcon size={24} className="mb-2 text-cyan-300" />
+            )}
+            <span className="text-sm font-medium">
+              {uploading ? 'Uploading' : canUpload ? 'Upload document' : 'Ollama offline'}
+            </span>
+            <span className="mt-1 text-xs text-zinc-500">
+              {canUpload ? 'PDF, DOCX, MD, TXT' : 'Embeddings are unavailable'}
+            </span>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.docx,.md,.txt"
+              onChange={handleUpload}
+              disabled={uploading || !canUpload}
+            />
+          </label>
+
+          {error && (
+            <div className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-xs leading-relaxed text-red-100">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-zinc-500">
+              <Loader2Icon size={16} className="animate-spin" />
+              Loading documents
+            </div>
+          )}
+
+          {!loading && docs.length === 0 && (
+            <div className="mt-10 flex flex-col items-center text-center">
+              <div className="grid h-12 w-12 place-items-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-500">
+                <FileTextIcon size={20} />
+              </div>
+              <p className="mt-4 text-sm font-medium text-zinc-300">No documents indexed</p>
+              <p className="mt-1 max-w-52 text-xs leading-relaxed text-zinc-600">The watch folder and uploads will appear here.</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {docs.map((doc) => (
+              <div
+                key={doc.id}
+                className="group rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 transition hover:border-zinc-700 hover:bg-zinc-900"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-zinc-950 text-cyan-300">
+                    <FileTextIcon size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-100">{doc.filename}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {formatBytes(doc.file_size)} / {doc.chunk_count} chunks
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(doc.id)}
+                    className="grid h-8 w-8 place-items-center rounded-md text-zinc-600 opacity-0 transition hover:bg-red-400/10 hover:text-red-300 group-hover:opacity-100"
+                    title="Delete document"
+                  >
+                    <TrashIcon size={14} />
+                  </button>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <DocumentStatus status={doc.status} />
+                  <span className="truncate text-xs text-zinc-600">{relativeDate(doc.created_at)}</span>
+                </div>
+                {doc.error_message && (
+                  <p className="mt-2 rounded-md bg-red-400/10 px-2 py-1 text-xs text-red-200">
+                    {doc.error_message}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
+    </aside>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
 
 export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -214,236 +358,343 @@ export default function HomePage() {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
-  const [showDocs, setShowDocs] = useState(false);
+  const [showDocs, setShowDocs] = useState(true);
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [appError, setAppError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const activeSessionTitle = useMemo(() => {
+    return sessions.find((session) => session.id === activeSession)?.title ?? 'New chat';
+  }, [activeSession, sessions]);
 
-  useEffect(() => { scrollToBottom(); }, [messages, streamText]);
+  const refreshHealth = useCallback(async () => {
+    setHealth(await healthApi.check());
+  }, []);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const list = await sessionsApi.list();
+      setSessions(list);
+      setAppError(null);
+    } catch (err) {
+      setAppError(getErrorMessage(err));
+      setSessions([]);
+    }
+  }, []);
 
   useEffect(() => {
     loadSessions();
-    healthApi.check().then(setHealth);
-  }, []);
+    refreshHealth();
+  }, [loadSessions, refreshHealth]);
 
-  const loadSessions = async () => {
-    const list = await sessionsApi.list().catch(() => []);
-    setSessions(list);
-  };
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, streamText]);
 
   const selectSession = async (id: string) => {
     setActiveSession(id);
-    const s = await sessionsApi.get(id).catch(() => null);
-    if (s) setMessages(s.messages);
+    setAppError(null);
+    try {
+      const session = await sessionsApi.get(id);
+      setMessages(session.messages);
+    } catch (err) {
+      setAppError(getErrorMessage(err));
+    }
   };
 
   const newSession = async () => {
-    const s = await sessionsApi.create('New Chat');
-    setSessions((prev) => [s, ...prev]);
-    setActiveSession(s.id);
-    setMessages([]);
+    setAppError(null);
+    try {
+      const session = await sessionsApi.create('New Chat');
+      setSessions((prev) => [session, ...prev]);
+      setActiveSession(session.id);
+      setMessages([]);
+    } catch (err) {
+      setAppError(getErrorMessage(err));
+    }
   };
 
-  const deleteSession = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    await sessionsApi.delete(id).catch(() => {});
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    if (activeSession === id) {
-      setActiveSession(null);
-      setMessages([]);
+  const deleteSession = async (id: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      await sessionsApi.delete(id);
+      setSessions((prev) => prev.filter((session) => session.id !== id));
+      if (activeSession === id) {
+        setActiveSession(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      setAppError(getErrorMessage(err));
     }
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isStreaming) return;
+    const question = input.trim();
+    if (!question || isStreaming) return;
 
+    setAppError(null);
     let sessionId = activeSession;
-    if (!sessionId) {
-      const s = await sessionsApi.create(input.slice(0, 60));
-      setSessions((prev) => [s, ...prev]);
-      sessionId = s.id;
-      setActiveSession(s.id);
-    }
-
-    const userMsg: Message = {
-      id: Date.now(),
-      role: 'user',
-      content: input,
-      sources: null,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    const question = input;
-    setInput('');
-    setIsStreaming(true);
-    setStreamText('');
 
     try {
-      const url = chatApi.streamUrl(sessionId, question);
-      const sse = new EventSource(url);
+      if (!sessionId) {
+        const session = await sessionsApi.create(question.slice(0, 60));
+        setSessions((prev) => [session, ...prev]);
+        sessionId = session.id;
+        setActiveSession(session.id);
+      }
+
+      const userMessage: Message = {
+        id: Date.now(),
+        role: 'user',
+        content: question,
+        sources: null,
+        created_at: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, userMessage]);
+      setInput('');
+      setIsStreaming(true);
+      setStreamText('');
+
+      const sse = new EventSource(chatApi.streamUrl(sessionId, question));
       let accumulated = '';
       let sources: MessageSource[] = [];
 
-      sse.onmessage = (e) => {
-        if (e.data === '[DONE]') {
+      sse.onmessage = (event) => {
+        if (event.data === '[DONE]') {
           sse.close();
           setIsStreaming(false);
-          const aiMsg: Message = {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: accumulated,
-            sources,
-            created_at: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, aiMsg]);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 1,
+              role: 'assistant',
+              content: accumulated,
+              sources,
+              created_at: new Date().toISOString(),
+            },
+          ]);
           setStreamText('');
           loadSessions();
           return;
         }
+
         try {
-          const token = JSON.parse(e.data);
+          const token = JSON.parse(event.data) as string;
           accumulated += token;
           setStreamText(accumulated);
-        } catch {}
+        } catch {
+          setAppError('The stream returned an invalid response.');
+        }
       };
 
-      sse.addEventListener('sources', (e: any) => {
-        try { sources = JSON.parse(e.data); } catch {}
+      sse.addEventListener('sources', (event: MessageEvent) => {
+        try {
+          sources = JSON.parse(event.data) as MessageSource[];
+        } catch {
+          sources = [];
+        }
       });
 
       sse.onerror = () => {
         sse.close();
         setIsStreaming(false);
         setStreamText('');
+        setAppError('The response stream stopped unexpectedly.');
       };
     } catch (err) {
       setIsStreaming(false);
       setStreamText('');
+      setAppError(getErrorMessage(err));
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
       sendMessage();
     }
   };
 
   return (
-    <div className="h-full flex">
-      {/* Sidebar */}
-      <div className="w-60 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
-        <div className="p-3 border-b border-gray-800">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 rounded-lg bg-sky-600 flex items-center justify-center">
-              <ServerIcon size={14} />
+    <main className="flex h-full bg-zinc-950 text-zinc-100">
+      <aside className="flex w-[280px] shrink-0 flex-col border-r border-zinc-800 bg-[#10100f]">
+        <div className="border-b border-zinc-800 p-4">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-cyan-400 text-zinc-950">
+              <ServerIcon size={18} />
             </div>
-            <span className="font-bold text-gray-100 text-sm">LocalRAG</span>
-            <span className={`ml-auto w-2 h-2 rounded-full ${health?.ollama_connected ? 'bg-green-400' : 'bg-red-400'}`} title={health?.ollama_connected ? 'Ollama connected' : 'Ollama offline'} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white">LocalRAG</p>
+              <p className="text-xs text-zinc-500">{health?.chroma_chunks ?? 0} chunks indexed</p>
+            </div>
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${health?.ollama_connected ? 'bg-emerald-400' : 'bg-red-400'}`}
+              title={health?.ollama_connected ? 'Ollama online' : 'Ollama offline'}
+            />
           </div>
+
           <button
+            type="button"
             onClick={newSession}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg text-sm font-medium transition-colors"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-400 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-300"
           >
-            <PlusIcon size={14} />
+            <PlusIcon size={16} />
             New Chat
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              onClick={() => selectSession(s.id)}
-              className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${
-                activeSession === s.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-              }`}
-            >
-              <span className="flex-1 truncate">{s.title || 'Chat'}</span>
-              <button
-                onClick={(e) => deleteSession(s.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400"
+        <div className="flex-1 overflow-y-auto p-3">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-600">Chats</span>
+            <span className="text-xs text-zinc-600">{sessions.length}</span>
+          </div>
+
+          <div className="space-y-1">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className={`group flex w-full items-center gap-1 rounded-lg px-2 py-1 transition ${
+                  activeSession === session.id
+                    ? 'bg-zinc-800'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'
+                }`}
               >
-                <TrashIcon size={12} />
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => selectSession(session.id)}
+                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm ${
+                    activeSession === session.id ? 'text-white' : 'text-inherit'
+                  }`}
+                >
+                  <MessageSquareIcon size={15} className="shrink-0 text-zinc-500" />
+                  <span className="min-w-0 flex-1 truncate">{session.title || 'Untitled chat'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => deleteSession(session.id, event)}
+                  className="grid h-7 w-7 place-items-center rounded-md text-zinc-600 opacity-0 transition hover:bg-red-400/10 hover:text-red-300 group-hover:opacity-100"
+                  title="Delete chat"
+                >
+                  <TrashIcon size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+
           {sessions.length === 0 && (
-            <p className="text-xs text-gray-600 text-center mt-4">No chats yet</p>
+            <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
+              <MessageSquareIcon size={18} className="mx-auto text-zinc-600" />
+              <p className="mt-2 text-sm text-zinc-400">No conversations</p>
+            </div>
           )}
         </div>
 
-        <div className="p-3 border-t border-gray-800">
+        <div className="border-t border-zinc-800 p-3">
           <button
-            onClick={() => setShowDocs(!showDocs)}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
+            type="button"
+            onClick={() => setShowDocs((value) => !value)}
+            className={`flex h-11 w-full items-center gap-2 rounded-lg px-3 text-sm transition ${
+              showDocs ? 'bg-zinc-800 text-white' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+            }`}
           >
-            <FileTextIcon size={14} />
+            <DatabaseIcon size={16} />
             Documents
-            {health && (
-              <span className="ml-auto text-xs text-gray-500">{health.chroma_chunks} chunks</span>
-            )}
+            <PanelRightIcon size={15} className="ml-auto text-zinc-500" />
           </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {messages.length === 0 && !isStreaming && (
-            <div className="h-full flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 rounded-2xl bg-sky-600/20 border border-sky-600/30 flex items-center justify-center mb-4">
-                <ServerIcon size={28} className="text-sky-400" />
+      <section className="flex min-w-0 flex-1 flex-col bg-[#080908]">
+        <header className="flex h-16 items-center justify-between border-b border-zinc-800 px-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <CircleIcon size={8} className="fill-cyan-300 text-cyan-300" />
+              <h1 className="truncate text-sm font-semibold text-zinc-100">{activeSessionTitle}</h1>
+            </div>
+            <p className="mt-1 text-xs text-zinc-600">{messages.length} messages</p>
+          </div>
+          <StatusPill health={health} />
+        </header>
+
+        {appError && (
+          <div className="mx-5 mt-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+            {appError}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto px-5 py-6">
+          {messages.length === 0 && !isStreaming ? (
+            <div className="mx-auto flex h-full max-w-3xl flex-col justify-center">
+              <div className="mb-5 grid h-14 w-14 place-items-center rounded-lg border border-zinc-800 bg-zinc-900 text-cyan-300">
+                <ServerIcon size={24} />
               </div>
-              <h1 className="text-xl font-semibold text-gray-200 mb-2">LocalRAG</h1>
-              <p className="text-gray-500 text-sm max-w-sm">
-                Ask questions about your documents. All processing is 100% local — your data never leaves your machine.
-              </p>
+              <h2 className="text-3xl font-semibold tracking-tight text-white">Ask your local archive.</h2>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {['Summarize the newest document', 'Find citations about a topic', 'Compare two uploaded files'].map(
+                  (prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => setInput(prompt)}
+                      className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-left text-sm text-zinc-300 transition hover:border-cyan-400/40 hover:text-white"
+                    >
+                      {prompt}
+                    </button>
+                  ),
+                )}
+              </div>
               {health && !health.ollama_connected && (
-                <div className="mt-4 px-4 py-3 bg-red-900/30 border border-red-700/50 rounded-lg text-sm text-red-400">
-                  ⚠️ Ollama is not running. Start it with <code className="font-mono">ollama serve</code>
+                <div className="mt-6 flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+                  <AlertTriangleIcon size={16} />
+                  Start Ollama before asking questions.
                 </div>
               )}
             </div>
+          ) : (
+            <div className="mx-auto flex max-w-4xl flex-col gap-5">
+              {messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+              {isStreaming && <TypingIndicator streamText={streamText} />}
+              <div ref={bottomRef} />
+            </div>
           )}
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
-          {isStreaming && <TypingIndicator streamText={streamText} />}
-          <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div className="border-t border-gray-800 p-4">
-          <div className="flex gap-3 items-end">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask a question about your documents…"
-              rows={1}
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 resize-none focus:outline-none focus:border-sky-600 transition-colors"
-              style={{ maxHeight: '120px', overflowY: 'auto' }}
-              disabled={isStreaming}
-            />
+        <div className="border-t border-zinc-800 bg-[#10100f] px-5 py-4">
+          <div className="mx-auto flex max-w-4xl items-end gap-3">
+            <div className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 transition focus-within:border-cyan-400/70">
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask a question..."
+                rows={1}
+                className="max-h-32 min-h-12 w-full resize-none bg-transparent px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+                disabled={isStreaming}
+              />
+            </div>
             <button
+              type="button"
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-3 bg-sky-600 hover:bg-sky-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-xl transition-colors text-white"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-cyan-400 text-zinc-950 transition hover:bg-cyan-300 disabled:bg-zinc-800 disabled:text-zinc-600"
+              title="Send"
             >
-              <SendIcon size={16} />
+              {isStreaming ? <Loader2Icon size={18} className="animate-spin" /> : <SendIcon size={18} />}
             </button>
           </div>
-          <p className="text-xs text-gray-600 mt-2 text-center">
-            Enter to send · Shift+Enter for new line · Powered by Ollama locally
-          </p>
         </div>
-      </div>
+      </section>
 
-      {/* Documents panel */}
-      {showDocs && <DocumentPanel onClose={() => setShowDocs(false)} />}
-    </div>
+      {showDocs && (
+        <DocumentPanel
+          health={health}
+          onClose={() => setShowDocs(false)}
+          onDocumentsChanged={refreshHealth}
+        />
+      )}
+    </main>
   );
 }

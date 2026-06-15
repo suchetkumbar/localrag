@@ -5,6 +5,10 @@
 
 const BASE = '/api';
 
+type ApiValidationDetail = {
+  msg?: string;
+};
+
 export interface Session {
   id: string;
   title: string | null;
@@ -80,8 +84,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail ?? detail;
-    } catch {}
+      if (typeof body.detail === 'string') {
+        detail = body.detail;
+      } else if (Array.isArray(body.detail)) {
+        detail = body.detail
+          .map((item: ApiValidationDetail) => item.msg ?? JSON.stringify(item))
+          .join(', ');
+      }
+    } catch {
+      detail = res.statusText || 'Request failed';
+    }
     throw new Error(`API error ${res.status}: ${detail}`);
   }
 
@@ -135,7 +147,7 @@ export const chatApi = {
 
 export const documentsApi = {
   list: (status = 'all') =>
-    apiFetch<{ documents: Document[]; total: number }>(`/documents?status=${status}`),
+    apiFetch<{ documents: Document[]; total: number }>(`/documents?status_filter=${status}`),
 
   get: (id: string) => apiFetch<Document>(`/documents/${id}`),
 
@@ -153,7 +165,8 @@ export const documentsApi = {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail ?? `Upload failed: ${res.statusText}`);
+      const detail = typeof body.detail === 'string' ? body.detail : res.statusText;
+      throw new Error(`Upload failed: ${detail || 'request failed'}`);
     }
     return res.json();
   },
