@@ -54,5 +54,4 @@ frontend/.turbo/
 .ruff_cache/
 
 # readme
-MUST_README.md
-DEPENDENCY_FIX_README.md
+context/
