@@ -1,0 +1,149 @@
+# RAG regression gate on every pull request.
+#
+# Replays a recorded cache of model calls (no LLM runs in CI) over the 40-item smoke
+# subset, compares against results/baseline.json from the *base* branch, posts a
+# before/after table as a PR comment, and fails if recall@5 or faithfulness regresses.
+#
+# Setup (once), see README "CI regression gate":
+#   - repository variable EVAL_DATA_REPO = <owner>/<private eval-data repo>
+#   - repository secret   EVAL_DATA_TOKEN = fine-grained token, read-only "Contents"
+#     access to that repository only
+name: Eval gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: eval-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Smoke eval vs baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Secrets cannot be tested in `if:` directly; expose only whether one is set.
+      HAS_DATA: ${{ secrets.EVAL_DATA_TOKEN != '' && vars.EVAL_DATA_REPO != '' }}
+      ACCEPT: ${{ contains(github.event.pull_request.labels.*.name, 'accept-regression') }}
+    steps:
+      - name: Skip when eval data is not available
+        if: env.HAS_DATA != 'true'
+        run: echo "::notice::No access to the private eval data (forked PR, or EVAL_DATA_REPO / EVAL_DATA_TOKEN not set). Gate skipped."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_DATA == 'true'
+        with:
+          fetch-depth: 0 # the baseline is read from the base branch
+
+      - name: Check out private eval data
+        if: env.HAS_DATA == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.EVAL_DATA_REPO }}
+          token: ${{ secrets.EVAL_DATA_TOKEN }}
+          path: eval-data
+
+      - uses: actions/setup-python@v5
+        if: env.HAS_DATA == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install
+        if: env.HAS_DATA == 'true'
+        run: |
+          pip install -r requirements.txt
+          pip install --no-deps -e .
+
+      - name: Cache raw corpus
+        if: env.HAS_DATA == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: corpus-${{ hashFiles('eval-data/manifests/fastapi.json') }}
+
+      - name: Fetch and prepare corpus (sha256-verified)
+        if: env.HAS_DATA == 'true'
+        run: |
+          python -m rag.corpus fetch --manifest eval-data/manifests/fastapi.json
+          python -m rag.corpus prepare --manifest eval-data/manifests/fastapi.json
+
+      - name: Baseline from the base branch
+        if: env.HAS_DATA == 'true'
+        id: baseline
+        run: |
+          if git show "origin/${{ github.base_ref }}:results/baseline.json" > base-baseline.json 2>/dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No results/baseline.json on ${{ github.base_ref }} yet. Gate skipped."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run gate
+        if: env.HAS_DATA == 'true' && steps.baseline.outputs.found == 'true'
+        id: gate
+        continue-on-error: true # post the comment first, fail at the end
+        run: |
+          extra=""
+          if [ "$ACCEPT" = "true" ]; then extra="--accept-regression"; fi
+          rag-eval gate \
+            --config configs/baseline.yaml \
+            --dataset eval-data/golden/smoke.jsonl \
+            --baseline base-baseline.json \
+            --cache-path eval-data/cache/smoke.sqlite \
+            --cache-mode readonly \
+            --comment-out gate.md \
+            $extra 2>&1 | tee gate.log
+
+      - name: Post PR comment
+        if: always() && env.HAS_DATA == 'true' && steps.baseline.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- rag-eval-gate -->';
+            let body;
+            if (fs.existsSync('gate.md')) {
+              body = fs.readFileSync('gate.md', 'utf8');
+            } else {
+              const log = fs.existsSync('gate.log') ? fs.readFileSync('gate.log', 'utf8') : '';
+              const miss = log.includes('CacheMissError') || log.includes('cache miss');
+              body = `${marker}\n### RAG eval gate: could not run\n\n` + (miss
+                ? 'This PR needs model calls that are not in the recorded cache (for example a changed prompt, chunker or model). Run `make gate` locally to record them, push the updated bundle to the eval-data repository, and re-run this job.'
+                : 'The gate crashed; see the job log.');
+            }
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Upload run
+        if: always() && env.HAS_DATA == 'true' && steps.baseline.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-gate-run
+          # items.jsonl contains golden questions; keep artifacts to metrics and reports.
+          path: |
+            results/**/metrics.json
+            results/**/report.md
+            gate.md
+          if-no-files-found: ignore
+
+      - name: Fail on regression
+        if: steps.gate.outcome == 'failure'
+        run: |
+          echo "::error::RAG eval gate failed. See the PR comment."
+          exit 1

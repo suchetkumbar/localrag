@@ -350,6 +350,56 @@ answer, and a test now guards against that.
 chunkers cap chunks at 1000 characters with 150 overlap, so the chunking comparison
 measures *where* boundaries fall (fixed windows vs markdown sections), not chunk size.
 
+## Milestone 5: CI regression gate
+
+Code: `rag/experiment/gate.py`, `.github/workflows/eval-gate.yml`, `eval-full.yml`.
+
+### Record and replay instead of running models in CI
+Free GitHub runners have 2 CPU cores and no GPU; llama3-8B there takes minutes per
+answer. Instead, `DiskCache(record_to=...)` copies every cache entry a local run serves
+or stores into a separate bundle file. That bundle holds exactly the embeddings, reranker
+scores, generations and judge verdicts the smoke evaluation needs, a few MB. CI opens
+it in `readonly` mode, where any miss raises `CacheMissError`, so CI cannot silently call
+a model or substitute a different one. The same pattern is known from HTTP test
+"cassettes": record against the real service once, replay deterministically.
+
+*Trade-off:* CI verifies changes whose model calls are recorded. A PR that changes a
+prompt, chunker or model needs one local `make gate` to record new calls before CI can
+judge it. The gate's PR comment says exactly that on a cache miss, rather than failing
+mysteriously.
+
+*Rejected:* mocking the LLM with fixed answers in CI. Faithfulness of a canned answer
+measures nothing. *Rejected:* a hosted free API in CI, because rate limits, model updates
+and outages would make the gate flaky, and the gate must be deterministic to be trusted.
+
+### Private data, public numbers
+The golden set is kept out of the public repository by choice. CI checks out a private
+data repository with a read-only, single-repository token. The baseline file in the public
+repo contains only metric values keyed by opaque item IDs, so it reveals no questions.
+Forked PRs do not get secrets and skip the gate with a notice. Repository owners'
+branches are gated normally.
+
+### The decision rule
+A gated metric (recall@5, faithfulness) fails the PR when it drops by more than 3 points
+**and** the 95% paired-bootstrap interval of the change is entirely below zero. With 40
+smoke items one item moves recall@5 by 2.5 points, so a threshold alone would fail on
+noise, while an interval alone would fail on real but trivially small changes. A big drop
+whose interval includes zero (for example one item out of ten) is a warning. Other metrics
+are reported in the comment but never fail the PR.
+
+The baseline is read from the **base branch** (`git show origin/main:results/baseline.json`),
+not from the PR, so a PR cannot pass by rewriting its baseline. An intentional regression
+(say, trading a little recall for half the latency) is accepted explicitly with the
+`accept-regression` label, which stays visible in the comment and in the PR history.
+
+The comment also warns when the judge or its rubric differs from the baseline's: judged
+metrics can then move because the measuring stick changed, not the system.
+
+### Workflows are linted too
+`actionlint` runs in CI. It catches the class of mistakes that otherwise surface only
+after a push, such as testing `secrets.X` directly in an `if:`, which is not allowed;
+the gate exposes only an env flag saying whether the secret is set.
+
 ## Known limitations (Milestone 1)
 
 * Retrieval-stage latency on a warm cache measures cache lookups, not model calls. The

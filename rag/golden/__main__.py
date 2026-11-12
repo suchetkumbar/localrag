@@ -22,7 +22,7 @@ from rag.corpus import read_fingerprint
 from rag.factory import build_generator
 from rag.golden.card import stats_markdown, update_card
 from rag.golden.draft import DraftConfig, draft_items
-from rag.golden.review import ReviewSession, apply_quotas
+from rag.golden.review import ReviewSession, apply_quotas, stratified_sample
 from rag.golden.schema import (
     QUESTION_TYPES,
     REVIEW_STATUSES,
@@ -134,6 +134,14 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_smoke(args: argparse.Namespace) -> int:
+    subset = stratified_sample(load_golden(args.dataset), args.n, args.seed)
+    write_jsonl(args.out, subset)
+    counts = Counter(i.question_type for i in subset)
+    print(f"{args.out}: {len(subset)} items {dict(sorted(counts.items()))} (seed {args.seed})")
+    return 0
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     docs, fingerprint = _corpus(CorpusConfig(path=args.corpus))
     items = load_golden(args.dataset, allow_unverified=args.allow_unverified)
@@ -177,6 +185,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("dataset", type=Path)
     v.add_argument("--allow-unverified", action="store_true")
     v.set_defaults(func=cmd_validate)
+
+    sm = sub.add_parser("smoke", help="stratified subset of the verified dataset, for CI")
+    sm.add_argument("--dataset", type=Path, default=DATASET)
+    sm.add_argument("--out", type=Path, default=Path("data/golden/smoke.jsonl"))
+    sm.add_argument("--n", type=int, default=40)
+    sm.add_argument("--seed", type=int, default=11)
+    sm.set_defaults(func=cmd_smoke)
 
     for p in (d, r, s, b, v):
         p.add_argument("--drafts", type=Path, default=DRAFTS)

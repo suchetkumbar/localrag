@@ -5,7 +5,8 @@ against a golden dataset, and block pull requests that make answers worse.
 
 > **Status:** work in progress. Done: pluggable pipeline (M1); corpus pipeline and golden
 > dataset tooling (M2, human review in progress); metrics and LLM judge (M3, judge
-> validation pending). Next: experiment runner, CI gate.
+> validation pending); experiment runner (M4); CI regression gate (M5, needs the
+> private data repository set up). Next: presentation and prompt-injection tests (M6).
 > No results are reported yet; every number that appears here later will link to a
 > results file in this repo.
 
@@ -72,6 +73,49 @@ Useful flags: `--limit N` (first N items), `--retrieval-only` (no LLM, fast),
 `python -m rag.cli` is equivalent to `rag-eval` (needed where policy blocks new `.exe`
 launchers, as on the Windows development machine).
 
+## CI regression gate
+
+Every pull request runs `.github/workflows/eval-gate.yml`: the 40-item smoke subset is
+evaluated against `results/baseline.json` **from the base branch**, a before/after table
+is posted as a PR comment, and the PR fails if recall@5 or faithfulness drops by more
+than 3 points with a 95% paired-bootstrap interval entirely below zero. The
+`accept-regression` label lets an intentional trade-off through (the comment still shows
+it). A nightly job (`eval-full.yml`) replays the full evaluation.
+
+CI never runs a model. It replays a **recorded cache** of the exact model calls the
+evaluation makes; free CI runners cannot run an 8B LLM at a usable speed. If a PR needs
+calls that were never recorded (a new prompt, chunker or model), the gate stops with a
+cache miss instead of guessing, and you record them locally.
+
+The golden data stays private, in a separate repository:
+
+```
+<you>/localrag-eval-data (private)
+  golden/v1.jsonl  golden/smoke.jsonl  manifests/fastapi.json
+  cache/smoke.sqlite  cache/full.sqlite
+```
+
+One-time setup:
+1. Create the private repository and clone it next to this one (`../localrag-eval-data`).
+2. Create a fine-grained GitHub token with read-only **Contents** access to that
+   repository only. Add it to this repository as the secret `EVAL_DATA_TOKEN`, and add the
+   variable `EVAL_DATA_REPO` = `<you>/localrag-eval-data`.
+3. After the golden set is reviewed and built:
+
+   ```bash
+   make smoke          # python -m rag.golden smoke --n 40 --seed 11
+   make export-data    # copies dataset, smoke subset and manifest into ../localrag-eval-data
+   make baseline       # writes results/baseline.json and records cache/smoke.sqlite
+   make record-full    # records cache/full.sqlite for the nightly job
+   ```
+
+   Commit `results/baseline.json` here and push the data repository.
+
+When a PR changes model calls: run `make gate` (records the new calls into the bundle and
+shows the gate result locally), push the data repository, and re-run the PR job. After
+merging an intended quality change, run `make baseline` on `main` and commit it.
+Forked PRs have no access to the secret, so the gate is skipped there with a notice.
+
 ## Layout
 
 ```
@@ -87,7 +131,7 @@ DESIGN.md     trade-offs, rejected alternatives, known limitations
 ## Development
 
 ```bash
-ruff check . && ruff format --check . && mypy && pytest
+ruff check . && ruff format --check . && mypy && actionlint && pytest
 ```
 
-CI runs the same four commands on every pull request.
+CI runs the same commands on every pull request.

@@ -8,6 +8,7 @@ resumed at any point.
 Input and output are injected (``ask``/``say``) so the whole flow is unit-tested.
 """
 
+import random
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -223,3 +224,24 @@ def apply_quotas(
             taken[item.question_type] += 1
     missing = {q: quotas[q] - taken[q] for q in quotas if taken[q] < quotas[q]}
     return selected, missing
+
+
+def stratified_sample(items: Sequence[GoldenItem], n: int, seed: int) -> list[GoldenItem]:
+    """A seeded sample of ``n`` verified items that keeps the question-type proportions.
+
+    Per-type sizes use the largest-remainder method, so they always sum to ``n`` (for
+    200 items at 110/30/40/20 and n=40: 22/6/8/4). Output is in the original file order.
+    """
+    verified = [i for i in items if i.human_verified]
+    if n > len(verified):
+        raise ValueError(f"asked for {n} items but only {len(verified)} are verified")
+    by_type: dict[str, list[GoldenItem]] = {}
+    for item in verified:
+        by_type.setdefault(item.question_type, []).append(item)
+    exact = {q: n * len(v) / len(verified) for q, v in by_type.items()}
+    sizes = {q: int(x) for q, x in exact.items()}
+    for q in sorted(exact, key=lambda q: (sizes[q] - exact[q], q))[: n - sum(sizes.values())]:
+        sizes[q] += 1
+    rng = random.Random(seed)
+    chosen = {i.id for q, group in sorted(by_type.items()) for i in rng.sample(group, sizes[q])}
+    return [i for i in verified if i.id in chosen]

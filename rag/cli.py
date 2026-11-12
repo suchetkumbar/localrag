@@ -14,7 +14,15 @@ from dotenv import load_dotenv
 
 from rag.config import load_config
 from rag.console import use_utf8_output
-from rag.eval.evaluate import EvalConfig
+from rag.eval.evaluate import EvalConfig, per_item_values
+from rag.experiment.gate import (
+    DEFAULT_THRESHOLD,
+    baseline_from_run,
+    evaluate_gate,
+    read_baseline,
+    render_gate,
+    write_baseline,
+)
 from rag.experiment.matrix import matrix_configs, write_summary
 from rag.experiment.report import compare, config_diff, render_compare
 from rag.experiment.run import RunOptions, load_run, run_experiment
@@ -32,9 +40,12 @@ def _eval_config(path: Path | None) -> EvalConfig:
 def _options(args: argparse.Namespace) -> RunOptions:
     return RunOptions(
         limit=args.limit,
-        retrieval_only=args.retrieval_only,
-        judge=not args.no_judge,
+        retrieval_only=getattr(args, "retrieval_only", False),
+        judge=not getattr(args, "no_judge", False),
         allow_unverified=args.allow_unverified,
+        cache_path=getattr(args, "cache_path", None),
+        cache_mode=getattr(args, "cache_mode", None),
+        record_to=getattr(args, "record_to", None),
     )
 
 
@@ -73,6 +84,28 @@ def cmd_matrix(args: argparse.Namespace) -> int:
     published = write_summary(run_dirs, summary, None if args.only else Path("README.md"))
     print(f"\nsummary: {summary}" + ("" if published else " (README not updated: not publishable)"))
     return 0
+
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    run_dir = run_experiment(
+        load_config(args.config),
+        args.dataset,
+        _eval_config(args.eval_config),
+        _options(args),
+        results_root=args.results,
+    )
+    payload, results = load_run(run_dir)
+    if args.write_baseline:
+        write_baseline(args.baseline, baseline_from_run(payload, results))
+        print(f"baseline written: {args.baseline}")
+        return 0
+    baseline = read_baseline(args.baseline)
+    gate = evaluate_gate(baseline, per_item_values(results), payload["run"], args.threshold)
+    text = render_gate(gate, baseline, payload["run"], accepted=args.accept_regression)
+    print(text)
+    if args.comment_out:
+        args.comment_out.write_text(text, encoding="utf-8", newline="\n")
+    return 0 if gate.passed or args.accept_regression else 1
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
@@ -119,13 +152,32 @@ def main(argv: list[str] | None = None) -> int:
     run.set_defaults(func=cmd_run)
     matrix.set_defaults(func=cmd_matrix)
 
+    gate = sub.add_parser("gate", help="CI regression gate against a baseline")
+    gate.add_argument("--config", type=Path, default=Path("configs/baseline.yaml"))
+    gate.add_argument("--dataset", type=Path, default=Path("data/golden/smoke.jsonl"))
+    gate.add_argument("--eval-config", type=Path)
+    gate.add_argument("--baseline", type=Path, default=Path("results/baseline.json"))
+    gate.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
+    gate.add_argument(
+        "--write-baseline", action="store_true", help="record this run as the baseline"
+    )
+    gate.add_argument("--accept-regression", action="store_true", help="report but do not fail")
+    gate.add_argument("--comment-out", type=Path, help="write the PR comment markdown here")
+    gate.add_argument("--limit", type=int)
+    gate.add_argument("--allow-unverified", action="store_true")
+    gate.set_defaults(func=cmd_gate)
+    for p in (run, matrix, gate):
+        p.add_argument("--cache-path", type=Path, help="use this cache file (e.g. a bundle)")
+        p.add_argument("--cache-mode", choices=["rw", "readonly", "off"])
+        p.add_argument("--record-to", type=Path, help="copy every cache entry used into this file")
+
     cmp = sub.add_parser("compare", help="diff two runs and list items that got worse")
     cmp.add_argument("run_a")
     cmp.add_argument("run_b")
     cmp.add_argument("--out", type=Path, help="also write the comparison as markdown")
     cmp.set_defaults(func=cmd_compare)
 
-    for p in (run, matrix, cmp):
+    for p in (run, matrix, cmp, gate):
         p.add_argument("--results", type=Path, default=RESULTS)
     args = parser.parse_args(argv)
     result: int = args.func(args)

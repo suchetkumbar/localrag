@@ -72,22 +72,41 @@ def make_key(kind: str, payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _open(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value BLOB NOT NULL)")
+    conn.commit()
+    return conn
+
+
 class DiskCache:
-    def __init__(self, path: Path | str, mode: CacheMode = "rw") -> None:
+    """SQLite-backed cache.
+
+    ``record_to``: a second cache file that receives a copy of every entry this cache
+    serves or stores. Running an evaluation with it produces a small bundle containing
+    exactly the model calls that evaluation needs, which CI can replay in readonly mode
+    without any model (see DESIGN.md, "Record and replay").
+    """
+
+    def __init__(
+        self, path: Path | str, mode: CacheMode = "rw", record_to: Path | str | None = None
+    ) -> None:
         self.mode: CacheMode = mode
         self.hits = 0
         self.misses = 0
         self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
+        self._record: sqlite3.Connection | None = None
         if mode != "off":
-            path = Path(path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(str(path), check_same_thread=False)
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute(
-                "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value BLOB NOT NULL)"
-            )
-            self._conn.commit()
+            self._conn = _open(Path(path))
+        if record_to is not None:
+            if mode == "off":
+                raise ValueError("cannot record from a disabled cache")
+            if Path(record_to).resolve() == Path(path).resolve():
+                raise ValueError("record_to must be a different file than the cache")
+            self._record = _open(Path(record_to))
 
     @classmethod
     def disabled(cls) -> "DiskCache":
@@ -98,7 +117,11 @@ class DiskCache:
             return None
         with self._lock:
             row = self._conn.execute("SELECT value FROM cache WHERE key = ?", (key,)).fetchone()
-        return None if row is None else bytes(row[0])
+        if row is None:
+            return None
+        value = bytes(row[0])
+        self._copy_to_record(key, value)
+        return value
 
     def put(self, key: str, value: bytes) -> None:
         if self._conn is None or self.mode != "rw":
@@ -108,6 +131,16 @@ class DiskCache:
                 "INSERT OR REPLACE INTO cache (key, value) VALUES (?, ?)", (key, value)
             )
             self._conn.commit()
+        self._copy_to_record(key, value)
+
+    def _copy_to_record(self, key: str, value: bytes) -> None:
+        if self._record is None:
+            return
+        with self._lock:
+            self._record.execute(
+                "INSERT OR REPLACE INTO cache (key, value) VALUES (?, ?)", (key, value)
+            )
+            self._record.commit()
 
     def get_or_compute(
         self,
@@ -132,6 +165,7 @@ class DiskCache:
         return value, False
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        for conn in (self._conn, self._record):
+            if conn is not None:
+                conn.close()
+        self._conn = self._record = None

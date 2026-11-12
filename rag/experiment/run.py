@@ -32,7 +32,7 @@ from typing import Any
 import yaml
 
 from rag.cache import DiskCache
-from rag.config import PipelineConfig
+from rag.config import CacheMode, PipelineConfig
 from rag.corpus import read_fingerprint
 from rag.eval.evaluate import (
     HEADLINE_METRICS,
@@ -62,6 +62,11 @@ class RunOptions:
     judge: bool = True
     allow_unverified: bool = False
     run_id: str | None = None
+    # Cache overrides: CI replays a recorded bundle with cache_mode="readonly", and a
+    # local run with record_to writes the bundle (every model call the run needs).
+    cache_path: Path | None = None
+    cache_mode: CacheMode | None = None
+    record_to: Path | None = None
 
 
 def file_sha256(path: Path) -> str:
@@ -129,7 +134,11 @@ def run_experiment(
     out = results_root / run_id
     log(f"run {run_id}: {len(items)} items, config {cfg.name} ({cfg.fingerprint()})")
 
-    cache = DiskCache(cfg.cache.path, cfg.cache.mode)
+    cache = DiskCache(
+        options.cache_path or cfg.cache.path,
+        options.cache_mode or cfg.cache.mode,
+        record_to=options.record_to,
+    )
     pipeline = build_pipeline(cfg, cache)
 
     log("phase 1/4: indexing")

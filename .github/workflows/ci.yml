@@ -31,5 +31,8 @@ jobs:
       - name: Mypy (strict)
         run: mypy
 
+      - name: Lint workflows
+        run: actionlint
+
       - name: Tests
         run: pytest
