@@ -25,6 +25,10 @@ htmlcov/
 /data/golden/*
 !/data/golden/README.md
 
+# Experiment results: reports and metrics are committed; per-item files contain golden
+# questions and answers, which stay local like the dataset.
+results/**/items.jsonl
+
 # Secrets and personal notes
 .env
 context/

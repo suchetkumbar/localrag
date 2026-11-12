@@ -299,6 +299,57 @@ completion tokens, and cost per query. Cost is 0 for local Ollama models, comput
 configured price table for others, and reported as *unknown* rather than guessed if a
 price is missing.
 
+## Milestone 4: experiment runner
+
+Code: `rag/experiment/`, CLI `rag-eval` (`rag/cli.py`).
+
+### Deterministic run IDs
+A run directory is named `<config name>-<config fingerprint>-<dataset sha256>`. The same
+config on the same data always maps to the same directory, and re-running it is nearly
+free because every model call is cached. A changed config or dataset gets a new
+directory automatically. Each run also stores the exact config, the git commit (with a
+dirty flag), the judge identity and rubric versions, and cache hit counts, so a result can
+be traced to exactly what produced it.
+
+### Phased execution
+A run does index -> retrieve and rerank all -> free the reranker -> generate all -> judge
+all, instead of finishing each question in turn. Only one large model is needed per phase.
+This came from a real failure: on the 16 GB development laptop the ONNX cross-encoder
+and llama3 together exhausted RAM.
+
+### Confidence intervals
+* Every headline metric is a mean over items, reported with a 95% **percentile bootstrap**
+  interval (2000 resamples, fixed seed). No distributional assumption is needed, which
+  matters because most per-item values are 0/1 or a few discrete levels.
+* Means and intervals come from the same per-item values (`per_item_values`), so a table
+  can never show a mean outside its own interval.
+* `rag-eval compare` uses a **paired** bootstrap. Both runs answered the same questions,
+  so each resample uses the same question indices for both, and per-question difficulty
+  cancels. A change is reported as better or WORSE only if the 95% interval of the
+  difference excludes zero; otherwise it is "no clear change". With 200 items a
+  difference of a few points is often inside that interval, and the report says so
+  instead of calling it a win.
+* *Rejected:* a t-test on the means. It assumes approximate normality and independent
+  samples, and the second assumption is false for two runs over the same questions.
+
+### Retrieval-only mode
+`--retrieval-only` skips generation and judging and reports only retrieval metrics. It
+takes minutes instead of hours on a laptop. Answer metrics are then *absent* (None), not
+zero: an earlier draft reported 0% refusal accuracy for runs that never generated an
+answer, and a test now guards against that.
+
+### What gets published
+* Reports list item IDs, never question text, because the golden set stays out of git.
+* `rag-eval matrix` writes `results/matrix.md` and updates the README results table only
+  when every run used a fully human-verified dataset in full mode. Smoke runs on
+  unreviewed drafts are marked unverified in their own reports and can never reach the
+  README.
+
+### The matrix
+2 chunkers x 3 retrievers x reranker on/off, derived from `configs/baseline.yaml`. Both
+chunkers cap chunks at 1000 characters with 150 overlap, so the chunking comparison
+measures *where* boundaries fall (fixed windows vs markdown sections), not chunk size.
+
 ## Known limitations (Milestone 1)
 
 * Retrieval-stage latency on a warm cache measures cache lookups, not model calls. The

@@ -89,6 +89,7 @@ class ItemResult(_Record):
     question: str
     reference_answer: str
     answer: str
+    generated: bool = True  # False in retrieval-only runs: no answer metrics then
     refused: bool
     retrieval: dict[str, float] | None
     ranking: tuple[RetrievedRef, ...]  # top 10, for inspecting and comparing runs
@@ -109,10 +110,14 @@ def evaluate_item(
     cfg: EvalConfig,
     judge: LLMJudge | None,
     generator_provider: str,
+    *,
+    generated: bool = True,
 ) -> ItemResult:
+    """``generated=False`` scores retrieval only: ``answer`` then carries a ranking and an
+    empty generation, and no refusal, citation or judge metrics are computed."""
     evidence = item.evidence
-    text = answer.generation.text
-    refused = is_refusal(text)
+    text = answer.generation.text if generated else ""
+    refused = generated and is_refusal(text)
 
     def ref(sc: Any) -> RetrievedRef:
         c = sc.chunk
@@ -141,7 +146,7 @@ def evaluate_item(
     context_texts = tuple(sc.chunk.indexed_text for sc in answer.context)
 
     judge_record = None
-    if judge is not None:
+    if judge is not None and generated:
         judge_record = _judge(item, text, refused, context_texts, judge)
 
     g = answer.generation
@@ -151,6 +156,7 @@ def evaluate_item(
         question=item.question,
         reference_answer=item.reference_answer,
         answer=text,
+        generated=generated,
         refused=refused,
         retrieval=retrieval,
         ranking=tuple(ref(sc) for sc in answer.ranking[:10]),
@@ -209,78 +215,104 @@ def _judge(
 # Correctness labels as scores; kept as plain str keys because records store plain str.
 _LABEL_SCORE: dict[str, float] = {str(label): score for label, score in CORRECTNESS_SCORE.items()}
 
+# Headline metrics in report order. Higher is better for all of them except
+# false_refusal_rate.
+HEADLINE_METRICS = (
+    "recall@1",
+    "recall@3",
+    "recall@5",
+    "recall@10",
+    "mrr",
+    "ndcg@10",
+    "correctness",
+    "accuracy",
+    "faithfulness",
+    "refusal_accuracy",
+    "false_refusal_rate",
+    "citation_precision",
+)
+LOWER_IS_BETTER = frozenset({"false_refusal_rate"})
+
+
+def per_item_values(results: Sequence[ItemResult]) -> dict[str, dict[str, float]]:
+    """For each headline metric, the value of every item on which it is defined.
+
+    This is the single source for both the means and the bootstrap intervals, so the
+    two can never disagree. Keys are item IDs, which makes paired comparisons possible.
+    """
+    values: dict[str, dict[str, float]] = {m: {} for m in HEADLINE_METRICS}
+    for r in results:
+        if r.retrieval is not None:
+            for key, v in r.retrieval.items():
+                if key in values:
+                    values[key][r.id] = v
+        if not r.generated:
+            continue
+        if r.answerable:
+            values["false_refusal_rate"][r.id] = float(r.refused)
+            label = r.judge.correctness_label if r.judge else None
+            if label is not None:
+                values["correctness"][r.id] = _LABEL_SCORE[label]
+                values["accuracy"][r.id] = float(label == "correct")
+        else:
+            values["refusal_accuracy"][r.id] = float(r.refused)
+        if r.judge is not None and r.judge.faithfulness is not None:
+            values["faithfulness"][r.id] = r.judge.faithfulness
+        if r.citations.precision is not None:
+            values["citation_precision"][r.id] = r.citations.precision
+    return values
+
 
 def _mean(values: Sequence[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
-def _correctness_labels(results: Sequence[ItemResult]) -> list[str]:
-    return [
-        r.judge.correctness_label
-        for r in results
-        if r.answerable and r.judge is not None and r.judge.correctness_label is not None
-    ]
-
-
-def _faithfulness(results: Sequence[ItemResult]) -> list[float]:
-    return [
-        r.judge.faithfulness
-        for r in results
-        if r.judge is not None and r.judge.faithfulness is not None
-    ]
-
-
-def _recall(results: Sequence[ItemResult], key: str) -> list[float]:
-    return [r.retrieval[key] for r in results if r.retrieval is not None and key in r.retrieval]
-
-
 def headline(results: Sequence[ItemResult]) -> dict[str, float | None]:
-    """The headline metrics, also used for per-question-type breakdowns."""
-    labels = _correctness_labels(results)
-    return {
-        "recall@5": _mean(_recall(results, "recall@5")),
-        "accuracy": _mean([float(label == "correct") for label in labels]),
-        "faithfulness": _mean(_faithfulness(results)),
-        "refused": _mean([float(r.refused) for r in results]),
-    }
+    """Means of the headline metrics (None where no item defines the metric)."""
+    return {m: _mean(list(v.values())) for m, v in per_item_values(results).items()}
 
 
 def aggregate(results: Sequence[ItemResult]) -> dict[str, Any]:
-    """Run-level metrics. Every value is a mean over the items where it is defined, and
-    the ``n`` of each is reported alongside so small denominators are visible."""
-    answerable = [r for r in results if r.answerable]
-    unanswerable = [r for r in results if not r.answerable]
-    labels = _correctness_labels(results)
-    faith = _faithfulness(results)
-    validity = [r.citations.validity for r in results if r.citations.validity is not None]
-    precision = [r.citations.precision for r in results if r.citations.precision is not None]
-    costs = [r.ops.cost_usd for r in results]
-
-    metrics: dict[str, Any] = {}
-    for key in sorted({k for r in answerable if r.retrieval for k in r.retrieval}):
-        metrics[key] = _mean(_recall(answerable, key))
-    metrics["correctness"] = _mean([_LABEL_SCORE[label] for label in labels])
-    metrics["accuracy"] = _mean([float(label == "correct") for label in labels])
-    metrics["faithfulness"] = _mean(faith)
-    metrics["refusal_accuracy"] = _mean([float(r.refused) for r in unanswerable])
-    metrics["false_refusal_rate"] = _mean([float(r.refused) for r in answerable])
+    """Run-level metrics: headline means, plus operational statistics and counts."""
+    metrics: dict[str, Any] = dict(headline(results))
+    generated = [r for r in results if r.generated]
+    validity = [r.citations.validity for r in generated if r.citations.validity is not None]
     metrics["citation_validity"] = _mean(validity)
-    metrics["citation_precision"] = _mean(precision)
+
+    costs = [r.ops.cost_usd for r in generated]
     known_costs = [c for c in costs if c is not None]
-    metrics["cost_per_query_usd"] = _mean(known_costs) if len(known_costs) == len(costs) else None
-    metrics["prompt_tokens_mean"] = _mean([float(r.ops.prompt_tokens) for r in results])
-    metrics["completion_tokens_mean"] = _mean([float(r.ops.completion_tokens) for r in results])
-    stages = [{**r.ops.timings_ms, "model_latency_ms": r.ops.model_latency_ms} for r in results]
+    metrics["cost_per_query_usd"] = (
+        _mean(known_costs) if generated and len(known_costs) == len(costs) else None
+    )
+    metrics["prompt_tokens_mean"] = _mean([float(r.ops.prompt_tokens) for r in generated])
+    metrics["completion_tokens_mean"] = _mean([float(r.ops.completion_tokens) for r in generated])
+    stages = [
+        {
+            **r.ops.timings_ms,
+            **({"model_latency_ms": r.ops.model_latency_ms} if r.generated else {}),
+        }
+        for r in results
+    ]
     metrics["latency_ms"] = latency_summary(stages) if results else {}
+
+    values = per_item_values(results)
     metrics["n"] = {
         "items": len(results),
-        "answerable": len(answerable),
-        "unanswerable": len(unanswerable),
-        "judged_correctness": len(labels),
-        "judged_faithfulness": len(faith),
+        "answerable": sum(r.answerable for r in results),
+        "unanswerable": sum(not r.answerable for r in results),
+        "generated": len(generated),
+        "judged_correctness": len(values["correctness"]),
+        "judged_faithfulness": len(values["faithfulness"]),
         "judge_errors": sum(len(r.judge.errors) for r in results if r.judge),
         "by_type": dict(Counter(r.question_type for r in results)),
     }
     types = sorted({r.question_type for r in results})
-    metrics["by_type"] = {q: headline([r for r in results if r.question_type == q]) for q in types}
+    metrics["by_type"] = {
+        q: {
+            k: v
+            for k, v in headline([r for r in results if r.question_type == q]).items()
+            if k in ("recall@5", "mrr", "accuracy", "faithfulness", "refusal_accuracy")
+        }
+        for q in types
+    }
     return metrics

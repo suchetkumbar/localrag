@@ -72,7 +72,11 @@ class RAGPipeline:
         return RetrievalResult(ranking=ranking, timings_ms=timings)
 
     def answer(self, question: str) -> Answer:
-        retrieval = self.retrieve(question)
+        return self.generate(question, self.retrieve(question))
+
+    def generate(self, question: str, retrieval: RetrievalResult) -> Answer:
+        """Generate from an earlier retrieval. Splitting the two lets a batch run retrieve
+        for every question first, free the reranker, and only then load the LLM."""
         context_text, included = format_context(
             retrieval.ranking[: self.top_k], self.max_context_chars
         )

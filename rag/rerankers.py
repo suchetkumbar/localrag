@@ -41,6 +41,10 @@ class CrossEncoderReranker:
             float(s) for s in self._encoder.rerank(query, list(texts), batch_size=self.batch_size)
         ]
 
+    def close(self) -> None:
+        """Free the model (about 1 GB of RAM); it is reloaded on the next ``score``."""
+        self._encoder = None
+
 
 class CachedReranker:
     """Caches the score list for one (query, candidate texts) call."""
@@ -61,6 +65,11 @@ class CachedReranker:
             JSON_CODEC,
         )
         return [float(s) for s in value]
+
+    def close(self) -> None:
+        close = getattr(self.inner, "close", None)
+        if callable(close):
+            close()
 
 
 def rerank(reranker: Reranker, query: str, candidates: Sequence[ScoredChunk]) -> list[ScoredChunk]:

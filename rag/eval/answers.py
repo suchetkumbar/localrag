@@ -31,13 +31,24 @@ _REFUSAL_PATTERNS = [
     )
 ]
 _SHORT_ANSWER_CHARS = 300
+# Text left after removing the refusal sentence; below this the answer is a refusal.
+_MIN_SUBSTANCE_CHARS = 40
 _CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 
 
 def is_refusal(answer: str) -> bool:
+    """True if the answer declines to answer and says nothing substantive.
+
+    Models sometimes give a real answer and then append the refusal sentence anyway
+    ("X does Y [1]. I don't know based on the provided documents."). That is an answer,
+    and the judge must grade it, so the refusal sentence only counts when little else
+    is left once it and the citation markers are removed.
+    """
     normalised = " ".join(answer.split()).lower()
-    if REFUSAL.lower().rstrip(".") in normalised:
-        return True
+    refusal = REFUSAL.lower().rstrip(".")
+    if refusal in normalised:
+        rest = _CITATION.sub("", normalised.replace(refusal, ""))
+        return len(rest.strip(" .,;:-\n")) < _MIN_SUBSTANCE_CHARS
     if len(normalised) > _SHORT_ANSWER_CHARS:
         return False
     return any(p.search(normalised) for p in _REFUSAL_PATTERNS)

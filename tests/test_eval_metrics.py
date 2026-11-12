@@ -20,6 +20,7 @@ class TestRefusal:
             "The context does not mention a maximum number of middleware.",
             "This is not covered in the documents.",
             "There is not enough information to answer that.",
+            "Sorry. " + REFUSAL + " [1]",  # refusal plus filler is still a refusal
         ],
     )
     def test_detects_refusals(self, answer: str) -> None:
@@ -33,6 +34,10 @@ class TestRefusal:
             # Long, substantive answer that mentions a gap in passing is not a refusal.
             "Declare the parameter with Query(max_length=50) [1]. " * 8
             + "The documents do not mention a hard upper limit.",
+            # Real case from a smoke run: a cited answer with the refusal appended.
+            "Each model validates the cookie parameters independently [1].\n\n"
+            "Each model's `extra` configuration applies to all cookie parameters [1].\n\n"
+            + REFUSAL,
         ],
     )
     def test_answers_are_not_refusals(self, answer: str) -> None:

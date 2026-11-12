@@ -219,7 +219,7 @@ def test_aggregate() -> None:
     assert m["cost_per_query_usd"] == 0.0
     assert m["latency_ms"]["model_latency_ms"]["p50"] == pytest.approx(75.0)
     assert m["n"]["answerable"] == 3 and m["n"]["unanswerable"] == 1
-    assert m["by_type"]["unanswerable"]["refused"] == 1.0
+    assert m["by_type"]["unanswerable"]["refusal_accuracy"] == 1.0
 
 
 def test_aggregate_cost_unknown_if_any_price_missing() -> None:
