@@ -116,3 +116,33 @@ def test_format_context_numbers_and_skips_oversized() -> None:
     assert "[1] (source: doc.md)\nshort one" in text
     assert "[2] (source: doc.md)\nshort two" in text
     assert len(text) <= 200
+
+
+def test_json_mode_sets_provider_specific_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    sampling = SamplingParams(json_mode=True)
+    ollama_requests: list[httpx.Request] = []
+    ollama = OllamaGenerator(
+        sampling=sampling,
+        client=_mock_client(ollama_requests, {"message": {"content": "{}"}}),
+    )
+    ollama.generate("s", "u")
+    assert json.loads(ollama_requests[0].content)["format"] == "json"
+    assert ollama.identity["json_mode"] is True  # part of the cache key
+
+    monkeypatch.setenv("TEST_KEY", "k")
+    openai_requests: list[httpx.Request] = []
+    hosted = OpenAICompatibleGenerator(
+        base_url="https://x/v1",
+        model="m",
+        api_key_env="TEST_KEY",
+        sampling=sampling,
+        client=_mock_client(openai_requests, {"choices": [{"message": {"content": "{}"}}]}),
+    )
+    hosted.generate("s", "u")
+    assert json.loads(openai_requests[0].content)["response_format"] == {"type": "json_object"}
+
+
+def test_json_mode_off_by_default() -> None:
+    requests: list[httpx.Request] = []
+    OllamaGenerator(client=_mock_client(requests, {"message": {"content": "x"}})).generate("s", "u")
+    assert "format" not in json.loads(requests[0].content)

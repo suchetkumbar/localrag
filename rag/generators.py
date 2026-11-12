@@ -59,6 +59,8 @@ class OllamaGenerator:
                 "num_ctx": self.num_ctx,
             },
         }
+        if self.sampling.json_mode:
+            body["format"] = "json"
         t0 = time.perf_counter()
         resp = self._client.post("/api/chat", json=body)
         raise_for_status(resp)
@@ -106,6 +108,8 @@ class OpenAICompatibleGenerator:
             "seed": self.sampling.seed,
             "max_tokens": self.sampling.max_tokens,
         }
+        if self.sampling.json_mode:
+            body["response_format"] = {"type": "json_object"}
         t0 = time.perf_counter()
         resp = self._client.post(
             f"{self.base_url}/chat/completions", json=body, headers=self._headers

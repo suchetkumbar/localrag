@@ -13,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from rag.config import load_config
+from rag.console import use_utf8_output
 from rag.factory import build_pipeline
 from rag.loaders import load_corpus
 
@@ -27,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--show", type=int, default=5, help="number of retrieved chunks to print")
     args = parser.parse_args(argv)
     load_dotenv()
+    use_utf8_output()
 
     cfg = load_config(args.config)
     corpus_path = args.corpus or cfg.corpus.path

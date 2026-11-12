@@ -154,6 +154,8 @@ class SamplingParams(StrictModel):
     temperature: float = Field(default=0.0, ge=0)
     seed: int = 0
     max_tokens: int = Field(default=512, gt=0)
+    # Constrain output to a JSON object (Ollama `format`, OpenAI `response_format`).
+    json_mode: bool = False
 
 
 class OllamaGeneratorConfig(StrictModel):

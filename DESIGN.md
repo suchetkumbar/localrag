@@ -154,6 +154,66 @@ of canonical JSON of `(kind, model identity + params, exact input)`.
   operational metrics from a cached re-run still describe the real model call.
 * Values are JSON or `.npy` bytes (`allow_pickle=False`); nothing is ever unpickled.
 
+## Milestone 2: corpus and golden dataset
+
+### A pinned, checksummed corpus
+`rag/corpus.py` resolves a FastAPI release tag to a commit and records the raw URL, size
+and sha256 of every file used in `data/manifests/fastapi.json` (kept locally, not in
+git; regenerate it with `build-manifest --ref 0.162.5`). `fetch` re-downloads and verifies, and `prepare` builds the final text
+and a fingerprint over every prepared document. Each golden item stores that fingerprint,
+so a dataset can never be scored silently against a different corpus.
+
+Preparation choices:
+* **Code examples are inlined.** FastAPI pages pull code in with
+  `{* ../../docs_src/x.py ln[a:b] *}`. Without inlining, the corpus would contain no code,
+  which is unrealistic for API documentation. These paths are relative to the mkdocs
+  project directory (`docs/en`), not to the page. Resolving them per page was the first
+  bug, caught because the manifest builder checks that every include exists.
+* **Excluded:** the changelog (about half of all English text), auto-generated
+  `reference/` stubs, and `_*.md` tool fixtures. One of those (`_llm-test.md`) produced a
+  nonsense draft in the pilot, which is how it was found.
+* **Heading anchors stripped** (`## Title { #title }` becomes `## Title`), so they do not
+  pollute BM25 tokens or heading paths.
+
+### Drafting by unit number, not by quotation
+The drafting model sees each passage as numbered units (sentences, list items, whole code
+blocks) and cites evidence by unit number. Offsets then come from our own splitter, so
+every evidence span exists verbatim. *Rejected:* asking the model to quote evidence and
+fuzzy-matching the quote, because small models paraphrase "verbatim" quotes, and fuzzy
+matching would turn that into wrong offsets instead of an error.
+
+Two unit-splitter bugs found in the pilot run:
+* A long section is split into windows, and a window can start inside a code block.
+  The splitter therefore computes the code-fence state at the window start from the top
+  of the document; otherwise code lines are treated as prose sentences.
+* "e.g." is not a sentence boundary. Without that rule, an evidence span ended at
+  "wrap the WSGI (e.g.".
+
+### Drafts are not ground truth
+Drafts are written with `human_verified=false` and only the review CLI can change that.
+The schema enforces `human_verified == review in {accepted, edited}`, `build` only takes
+verified items, and `load_golden()` raises on unverified items unless explicitly told it
+is a smoke test. Rejected drafts stay in `drafts.jsonl` as an audit trail.
+
+### Deterministic, resumable drafting
+Section sampling is seeded, generation is temperature 0 and cached, and item IDs are
+hashes of the source sections. Re-running `draft` after a crash continues where it
+stopped and never duplicates or overwrites reviewed items. That mattered in practice:
+the first full run died at item 51 when Windows refused to replace a file another process
+(likely the antivirus scanner) briefly held open. The atomic write now retries briefly.
+
+### Steering a small drafter
+An 8B model asked for "an unanswerable question" wrote "What is the maximum number
+of ..." almost every time. Each prompt now gets a deterministic opening ("Does FastAPI",
+"How do I", "Which", ...) chosen from the item ID. Automatic filters discard questions that
+mention the passage or unit IDs, numeric answers without a number, multi-hop drafts citing
+one passage, and near-duplicates (token Jaccard >= 0.75).
+
+### Relevance from span overlap
+Retrieval metrics (Milestone 3) treat a chunk as relevant if it overlaps an evidence span.
+This keeps one set of labels valid for every chunker. The exact overlap rule (any overlap
+vs a minimum fraction) is defined and tested in Milestone 3.
+
 ## Known limitations (Milestone 1)
 
 * Retrieval-stage latency on a warm cache measures cache lookups, not model calls. The

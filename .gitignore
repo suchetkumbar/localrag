@@ -18,10 +18,12 @@ htmlcov/
 # Model-call cache (rebuilt automatically)
 .cache/
 
-# Local data: corpora are downloaded by script, never committed.
-# Golden datasets under data/golden/ ARE committed.
+# Local data is never committed: raw and prepared corpora, the corpus manifest, golden
+# drafts and the built dataset. Only the data card (documentation) is tracked.
 /data/*
 !/data/golden/
+/data/golden/*
+!/data/golden/README.md
 
 # Secrets and personal notes
 .env

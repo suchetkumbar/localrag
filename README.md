@@ -3,9 +3,10 @@
 Score every change to a chunker, embedding model, retriever, reranker, prompt or LLM
 against a golden dataset, and block pull requests that make answers worse.
 
-> **Status:** work in progress. Milestone 1 (pluggable pipeline) is done. The golden
-> dataset, metrics, experiment runner and CI gate are next. No results are reported yet;
-> every number that appears here later will link to a results file in this repo.
+> **Status:** work in progress. Done: pluggable pipeline (M1); corpus pipeline and golden
+> dataset tooling (M2, human review in progress). Next: metrics, experiment runner, CI gate.
+> No results are reported yet; every number that appears here later will link to a
+> results file in this repo.
 
 ## What exists today
 
@@ -36,8 +37,13 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements-dev.txt
 
 pytest                                              # unit tests, no models needed
-python -m rag.query --corpus path/to/markdown "Your question"
+
+python -m rag.corpus fetch && python -m rag.corpus prepare   # FastAPI docs, checksummed
+python -m rag.query "How do I declare a path parameter?"
 ```
+
+The golden dataset workflow (drafting, human review, build) is described in
+[`data/golden/README.md`](data/golden/README.md).
 
 `configs/baseline.yaml` documents every option. Copy it to try a variation, for example
 `retriever: {kind: hybrid}` or `reranker: {kind: cross_encoder}`.
@@ -46,7 +52,10 @@ python -m rag.query --corpus path/to/markdown "Your question"
 
 ```
 rag/          the pipeline package (see DESIGN.md for every design decision)
+rag/golden/   golden dataset: schema, LLM drafting, review CLI, build
+rag/corpus.py reproducible corpus download and preparation
 configs/      one YAML file per experiment
+data/         local only (git-ignored): corpus manifest, corpora, golden dataset
 tests/        unit tests, one file per component
 DESIGN.md     trade-offs, rejected alternatives, known limitations
 ```

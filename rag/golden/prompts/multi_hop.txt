@@ -1,0 +1,14 @@
+Passage A from "{doc_id_a}" (section: {title_a}):
+
+{units_a}
+
+Passage B from "{doc_id_b}" (section: {title_b}):
+
+{units_b}
+
+Write ONE question that can only be answered by combining information from BOTH passages. A question answerable from just one passage is wrong. Start the question with "{style}".
+
+Return JSON with exactly these keys:
+{{"question": "...", "answer": "one to three sentences", "evidence_units": ["a2", "b5"]}}
+
+Each evidence unit must state a fact the answer depends on (not a heading or an image). evidence_units must include at least one unit from A (a1, a2, ...) and at least one from B (b1, b2, ...).

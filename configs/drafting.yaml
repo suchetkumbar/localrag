@@ -1,0 +1,37 @@
+# Settings for `python -m rag.golden draft`. Drafts are candidates only: every item
+# must be accepted by a human in `python -m rag.golden review` before it is ground truth.
+
+corpus:
+  path: data/corpus/fastapi
+  patterns: ["**/*.md"]
+
+generator:
+  kind: ollama
+  model: llama3
+  num_ctx: 4096
+  sampling:
+    temperature: 0.0
+    seed: 0
+    max_tokens: 300
+    json_mode: true
+# A stronger free drafter (needs GROQ_API_KEY in .env):
+#   kind: openai_compatible
+#   model: openai/gpt-oss-120b
+#   sampling: {temperature: 0.0, max_tokens: 400, json_mode: true}
+
+# Drafted per type. Oversampled versus the 200-item build (110/30/40/20) because
+# reviewers reject some candidates.
+targets:
+  factual: 120
+  numeric: 45
+  multi_hop: 60
+  unanswerable: 35
+
+seed: 13
+max_items_per_doc: 4
+max_section_chars: 2500
+min_prose_chars: 300
+
+cache:
+  path: .cache/rag.sqlite
+  mode: rw

@@ -1,0 +1,8 @@
+Passage from "{doc_id}" (section: {title}):
+
+{units}
+
+Write ONE question on the same topic that a FastAPI user might plausibly ask, but that this passage does NOT answer. Ask about a specific detail, limit, number or option that is not mentioned, so that a careful assistant should say it does not know. Do not ask for opinions, comparisons with other frameworks, or anything about the future. Start the question with "{style}".
+
+Return JSON with exactly these keys:
+{{"question": "...", "why_unanswerable": "one sentence"}}
