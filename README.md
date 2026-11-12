@@ -4,7 +4,8 @@ Score every change to a chunker, embedding model, retriever, reranker, prompt or
 against a golden dataset, and block pull requests that make answers worse.
 
 > **Status:** work in progress. Done: pluggable pipeline (M1); corpus pipeline and golden
-> dataset tooling (M2, human review in progress). Next: metrics, experiment runner, CI gate.
+> dataset tooling (M2, human review in progress); metrics and LLM judge (M3, judge
+> validation pending). Next: experiment runner, CI gate.
 > No results are reported yet; every number that appears here later will link to a
 > results file in this repo.
 

@@ -10,7 +10,6 @@ reproduces the same candidates and never duplicates or overwrites reviewed items
 """
 
 import hashlib
-import json
 import random
 import re
 from collections import Counter
@@ -33,6 +32,7 @@ from rag.config import (
 from rag.golden.schema import QUESTION_TYPES, Evidence, GoldenItem, Provenance, QuestionType
 from rag.golden.units import Unit, merge_adjacent, split_units
 from rag.interfaces import Generator
+from rag.llm_json import NoJsonObjectError, extract_json_object
 from rag.prompts import REFUSAL
 from rag.types import Chunk, Document
 
@@ -168,16 +168,11 @@ def render_units(
 
 
 def extract_json(raw: str) -> dict[str, Any]:
-    start, end = raw.find("{"), raw.rfind("}")
-    if start == -1 or end <= start:
-        raise DraftRejectedError("no_json")
     try:
-        obj = json.loads(raw[start : end + 1])
-    except json.JSONDecodeError as exc:
-        raise DraftRejectedError("bad_json", str(exc)) from exc
-    if not isinstance(obj, dict):
-        raise DraftRejectedError("bad_json", "not an object")
-    return obj
+        return extract_json_object(raw)
+    except NoJsonObjectError as exc:
+        reason = "no_json" if "no JSON object" in str(exc) else "bad_json"
+        raise DraftRejectedError(reason, str(exc)) from exc
 
 
 def check_question(question: str) -> str:

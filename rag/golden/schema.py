@@ -7,9 +7,6 @@ retrieval metrics (Milestone 3) derive per-config relevance from that.
 """
 
 import json
-import os
-import tempfile
-import time
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +14,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rag.fileio import write_lines_atomic
 from rag.prompts import REFUSAL
 from rag.types import Document
 
@@ -103,33 +101,9 @@ def read_jsonl(path: Path) -> list[GoldenItem]:
 
 
 def write_jsonl(path: Path, items: Iterable[GoldenItem]) -> None:
-    """Atomic write: a crash mid-review can never leave a half-written file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-            for item in items:
-                f.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
-        _replace_with_retry(Path(tmp), path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-
-
-def _replace_with_retry(src: Path, dst: Path, attempts: int = 20) -> None:
-    """``os.replace`` that tolerates brief locks on Windows.
-
-    On Windows, replacing a file fails with PermissionError while another process (an
-    antivirus scanner, a search indexer, an editor) holds it open even momentarily.
-    """
-    for attempt in range(attempts):
-        try:
-            os.replace(src, dst)
-            return
-        except PermissionError:
-            if attempt == attempts - 1:
-                raise
-            time.sleep(0.05 * (attempt + 1))
+    write_lines_atomic(
+        path, (json.dumps(i.model_dump(mode="json"), ensure_ascii=False) for i in items)
+    )
 
 
 def load_golden(path: Path, *, allow_unverified: bool = False) -> list[GoldenItem]:

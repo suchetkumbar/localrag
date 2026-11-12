@@ -214,6 +214,91 @@ Retrieval metrics (Milestone 3) treat a chunk as relevant if it overlaps an evid
 This keeps one set of labels valid for every chunker. The exact overlap rule (any overlap
 vs a minimum fraction) is defined and tested in Milestone 3.
 
+## Milestone 3: metrics
+
+Code: `rag/eval/`. Every metric that can be computed exactly is computed in our own code
+without a model. The LLM judge is used only where meaning has to be assessed.
+
+### Relevance from span overlap (`rag/eval/retrieval.py`)
+A chunk covers an evidence span if it holds at least half of the span, or if at least half
+of the chunk lies inside the span. The second condition handles evidence longer than a
+chunk: a small chunk sitting inside a long evidence passage is relevant. The threshold
+(`min_span_coverage`, 0.5) is a config value, and its boundary cases are tested.
+
+### Retrieval metrics are span-level
+* **recall@k** is the fraction of an item's evidence spans covered within the top k, not
+  "was any relevant chunk retrieved". A multi-hop item that finds one of its two spans
+  scores 0.5, which is exactly the failure multi-hop questions exist to expose.
+* **MRR** is the reciprocal rank of the first chunk that covers any span.
+* **nDCG@10 uses novelty gains.** A chunk earns gain 1 only if it covers a span not
+  already covered higher up. Without this, overlapping windows of the same passage would
+  each earn gain and inflate nDCG for the fixed-size chunker, whose 150-character overlap
+  makes duplicate hits common. IDCG assumes every span is found in the first positions.
+* Unanswerable items have no evidence and are excluded from retrieval metrics.
+
+*Rejected:* computing these with RAGAS or DeepEval. Both are LLM-centric frameworks
+with heavy dependency trees, and their retrieval metrics assume chunk-level labels. The
+span-based definitions above are ~100 lines with hand-computed tests, and every number can
+be explained without referring to a library.
+
+### Deterministic answer checks (`rag/eval/answers.py`)
+* **Refusal** is the exact refusal sentence from the prompt, or, for short answers only, a
+  few common paraphrases ("the context does not mention ..."). The length limit stops a
+  long, substantive answer that mentions a gap in passing from counting as a refusal.
+  This gives *refusal accuracy* on unanswerable items and the *false refusal rate* on
+  answerable ones.
+* **Citation validity** is the fraction of cited `[n]` that refer to a passage actually
+  shown. **Citation precision** is the fraction of valid citations whose passage covers
+  gold evidence. Both are exact span checks, with no judge involved.
+
+### LLM-as-judge with versioned rubrics (`rag/eval/judge.py`, `rag/eval/prompts/`)
+* **Correctness** uses three labels: correct (every key fact, no contradiction), partial
+  (some key facts, no contradiction), incorrect (wrong, contradicting, or "I don't know").
+  They map to 1 / 0.5 / 0. Three labels instead of a 1-10 score: coarse labels are what a
+  human can apply consistently, and Cohen's kappa needs categories.
+* **Faithfulness** asks the judge to list the answer's claims and mark each as supported
+  or not by the passages the generator saw. The score is the fraction supported; the
+  binary label (all supported) is what is compared with the human.
+* The rubric asks for a reason **before** the label, so the model compares the facts
+  before committing to a verdict.
+* **Refusals bypass the judge.** A refusal to an answerable question is "incorrect" by the
+  rubric's own definition, and a refusal has no claims to check. That saves calls and
+  removes a source of judge noise.
+* Each rubric's version (`name@hash`) is stored with every verdict. Judge errors (invalid
+  JSON, unknown label) are recorded per item and counted, never silently dropped.
+
+*Rejected:* embedding similarity to the reference answer. "The default port is 8000" and
+"... is 8080" are near-identical embeddings, but only one is correct. Similarity measures
+wording, not facts.
+
+### Is the judge trustworthy? (`rag/eval/agreement.py`, `rag/eval/labels.py`)
+The judge is only trusted after it agrees with a human. `python -m rag.eval label` samples
+50 graded answers with a fixed seed and shows them **blind**: the labeler never sees the
+judge's verdict, so it cannot anchor them. `python -m rag.eval agreement` reports percent
+agreement, Cohen's kappa and the confusion matrix for correctness and for faithfulness.
+The judge counts as trusted when kappa >= 0.6 for both.
+
+Kappa rather than accuracy: with mostly-correct answers, a judge that always says
+"correct" reaches high percent agreement while knowing nothing. Kappa subtracts the
+agreement expected by chance from the two raters' label frequencies, and that
+always-"correct" judge scores kappa = 0 (this exact case is a unit test).
+
+If kappa < 0.6, the plan is to read the disagreements in the confusion matrix, change
+the rubric (a new `_v2` file, never an edit in place), re-judge from cache and recompute.
+Re-labeling is not needed, because the human labels do not depend on the rubric.
+
+**Known risk: self-preference.** By default the judge (llama3) is the same model as the
+generator, and models tend to rate their own outputs leniently. The kappa check is the
+safeguard; switching the judge to a different model (`judge:` in the eval config) is the
+remedy if agreement is poor.
+
+### Operational metrics (`rag/eval/ops.py`)
+p50/p95/mean per stage (retrieve, rerank, generate, plus the model's own latency),
+using the same linear-interpolation percentile as numpy. There are mean prompt and
+completion tokens, and cost per query. Cost is 0 for local Ollama models, computed from a
+configured price table for others, and reported as *unknown* rather than guessed if a
+price is missing.
+
 ## Known limitations (Milestone 1)
 
 * Retrieval-stage latency on a warm cache measures cache lookups, not model calls. The
