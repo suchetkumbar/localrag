@@ -1,0 +1,43 @@
+# Baseline RAG configuration. Every experiment is a copy of this file with changes;
+# no code edits needed. Unknown keys are rejected (see rag/config.py).
+name: baseline
+
+corpus:
+  path: data/corpus/fastapi
+  patterns: ["**/*.md"]
+
+chunker:
+  kind: fixed          # fixed | heading
+  size: 1000           # characters (~250 tokens)
+  overlap: 150
+
+embedder:
+  kind: ollama
+  model: nomic-embed-text
+  query_prefix: "search_query: "
+  document_prefix: "search_document: "
+
+retrieval:
+  retriever:
+    kind: dense        # dense | bm25 | hybrid
+  candidate_k: 50      # first-stage depth; also the ranking depth retrieval metrics see
+  top_k: 5             # chunks passed to the LLM
+
+reranker: null         # or: {kind: cross_encoder, model: BAAI/bge-reranker-base}
+
+generator:
+  kind: ollama
+  model: llama3
+  num_ctx: 4096       # must hold context + prompt + answer; see rag/config.py
+  sampling:
+    temperature: 0.0
+    seed: 0
+    max_tokens: 512
+
+prompt:
+  name: answer_v1
+  max_context_chars: 8000
+
+cache:
+  path: .cache/rag.sqlite
+  mode: rw             # rw | readonly | off

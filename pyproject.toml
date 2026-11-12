@@ -1,57 +1,30 @@
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
 markers = [
-    "e2e: end-to-end tests requiring live Ollama (deselect with '-m not e2e')",
-    "slow: slow tests",
+    "slow: needs a model download; also gated by RAG_RUN_MODEL_TESTS=1",
 ]
 addopts = [
-    "--cov=backend",
-    "--cov=mcp_server",
-    "--cov=database",
+    "--cov=rag",
     "--cov-report=term-missing",
-    "--cov-report=html:coverage_html",
-    "--cov-fail-under=75",
-    "-v",
-    "-m", "not e2e",
+    "--cov-fail-under=85",
 ]
 
 [tool.coverage.run]
-omit = [
-    "tests/*",
-    "*/migrations/*",
-    "frontend/*",
-    "deployment/*",
-]
+omit = ["tests/*"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = [
-    "frontend",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "*.egg-info",
-    "build",
-    "dist",
-]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "UP"]
-ignore = [
-    "E501",
-    "UP007",
-    "E402",
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["F401", "F811"]
+# E/W pycodestyle, F pyflakes, I isort, UP pyupgrade, B bugbear, SIM simplify
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
 
 [tool.mypy]
 python_version = "3.11"
-strict = false
+strict = true
+files = ["rag", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["fastembed", "fastembed.*"]  # ships without type information
 ignore_missing_imports = true
