@@ -1,0 +1,10 @@
+Passage from "{doc_id}" (section: {title}):
+
+{units}
+
+Write ONE question whose answer is a specific number stated in this passage: for example an HTTP status code, a port, a version, a count, a size or a default value. Do not ask about list numbering or line numbers.
+
+Return JSON with exactly these keys:
+{{"question": "...", "answer": "the number, plus a few words of context", "evidence_units": ["u2"]}}
+
+evidence_units lists the smallest set of units that contain the number.

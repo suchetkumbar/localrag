@@ -1,0 +1,10 @@
+Passage from "{doc_id}" (section: {title}):
+
+{units}
+
+Write ONE question that is fully answered by this passage. Start the question with "{style}".
+
+Return JSON with exactly these keys:
+{{"question": "...", "answer": "one or two sentences", "evidence_units": ["u3", "u4"]}}
+
+evidence_units lists the smallest set of units that together contain the answer.

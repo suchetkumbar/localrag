@@ -1,0 +1,24 @@
+# Evaluation settings for `rag-eval run --eval-config configs/eval.yaml`.
+# All values shown are the defaults.
+
+# The LLM judge. Same default model as the generator (llama3), which risks
+# self-preference; the judge-human kappa check is the safeguard (see DESIGN.md).
+judge:
+  kind: ollama
+  model: llama3
+  num_ctx: 4096
+  sampling:
+    temperature: 0.0
+    seed: 0
+    max_tokens: 600
+    json_mode: true
+
+min_span_coverage: 0.5      # chunk relevant if it covers >= 50% of a span (or is >= 50% span)
+recall_ks: [1, 3, 5, 10]
+ndcg_k: 10
+
+# USD per million tokens, keyed by model name. Local Ollama models cost 0 without an
+# entry. Copy prices from the provider's pricing page; a free tier is 0. Models without
+# an entry report "unknown" cost instead of a guess.
+prices: {}
+#   openai/gpt-oss-120b: {input_per_mtok: 0.0, output_per_mtok: 0.0}   # Groq free tier

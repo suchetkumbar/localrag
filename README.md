@@ -1,294 +1,137 @@
-# LocalRAG
+# LocalRAG: a RAG evaluation and regression harness
 
-**100% local, private document Q&A — powered by Ollama · ChromaDB · FastAPI · Next.js**
+Score every change to a chunker, embedding model, retriever, reranker, prompt or LLM
+against a golden dataset, and block pull requests that make answers worse.
 
-No cloud. No API keys. No data leaving your machine.
+> **Status:** work in progress. Done: pluggable pipeline (M1); corpus pipeline and golden
+> dataset tooling (M2, human review in progress); metrics and LLM judge (M3, judge
+> validation pending); experiment runner (M4); CI regression gate (M5, needs the
+> private data repository set up). Next: presentation and prompt-injection tests (M6).
+> No results are reported yet; every number that appears here later will link to a
+> results file in this repo.
 
----
+## What exists today
 
-## What It Does
+A stateless RAG pipeline where each stage is swappable from YAML, with no code changes:
 
-LocalRAG lets you upload documents (PDF, DOCX, Markdown, TXT) and ask questions about them in a chat interface. Every part of the pipeline runs locally:
+| Stage | Options |
+|---|---|
+| Chunking | fixed-size windows with overlap · markdown sections by heading |
+| Retrieval | dense (Qdrant, embedded) · BM25 · hybrid (reciprocal rank fusion) |
+| Reranking | off · cross-encoder `BAAI/bge-reranker-base` (ONNX) |
+| Generation | Ollama (local, default) · any OpenAI-compatible free tier (e.g. Groq) |
 
-- **Embeddings** — `nomic-embed-text` via Ollama
-- **LLM** — `llama3` via Ollama
-- **Vector store** — ChromaDB (on-disk)
-- **Database** — SQLite (conversation history)
-- **Backend** — FastAPI + MCP server (stdio)
-- **Frontend** — Next.js chat UI
+Every model call (embeddings, reranker scores, generations) is cached on disk keyed by
+its exact inputs, so re-running an experiment is fast, free and reproducible.
 
----
+Everything is free: models run locally through [Ollama](https://ollama.com), and the
+optional hosted generator uses a free API tier.
 
-## Quick Start (Docker — Recommended)
+## Quick start
 
-### Prerequisites
-- Docker + Docker Compose v2
-- 8 GB RAM minimum (16 GB recommended for llama3)
-- 10 GB free disk space (for models)
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/yourname/localrag.git
-cd localrag
-
-# 2. Copy env config
-cp .env.example .env
-
-# 3. Start everything (pulls models on first run — takes ~5 min)
-docker compose up -d
-
-# 4. Open the UI
-open http://localhost:3000
-```
-
-Services:
-| Service     | URL                        |
-|-------------|----------------------------|
-| Chat UI     | http://localhost:3000      |
-| API         | http://localhost:8000      |
-| API Docs    | http://localhost:8000/docs |
-| Prometheus  | http://localhost:9090      |
-| Grafana     | http://localhost:3001      |
-
----
-
-## Quick Start (Bare Metal)
-
-### Prerequisites
-- Python 3.11+
-- Node.js 20+
-- [Ollama](https://ollama.com) installed
+Requires Python 3.11+ and Ollama.
 
 ```bash
-# 1. Install Ollama models
 ollama pull llama3
 ollama pull nomic-embed-text
 
-# 2. Install Python dependencies
-pip install -r requirements.txt
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
 
-# 3. Copy config
-cp .env.example .env
+pytest                                              # unit tests, no models needed
 
-# 4. Start backend
-python -m uvicorn backend.main:app --reload --port 8000
-
-# 5. Start frontend (new terminal)
-cd frontend
-npm install
-npm run dev
+python -m rag.corpus fetch && python -m rag.corpus prepare   # FastAPI docs, checksummed
+python -m rag.query "How do I declare a path parameter?"
 ```
 
----
+The golden dataset workflow (drafting, human review, build) is described in
+[`data/golden/README.md`](data/golden/README.md).
 
-## Project Structure
+`configs/baseline.yaml` documents every option. Copy it to try a variation, for example
+`retriever: {kind: hybrid}` or `reranker: {kind: cross_encoder}`.
 
-```
-localrag/
-├── config/                  # Configuration (settings.yaml, config.py)
-├── backend/
-│   ├── main.py              # FastAPI app entry point
-│   ├── api/                 # Route handlers (chat, sessions, documents, health)
-│   ├── services/            # Business logic (ingestion, chat, vector store, watcher)
-│   ├── models/              # Pydantic schemas
-│   └── middleware/          # Logging, API key, metrics middleware
-├── mcp_server/
-│   └── server.py            # MCP server (tools, resources, prompts)
-├── database/
-│   └── models.py            # SQLAlchemy models + session factory
-├── monitoring/
-│   ├── metrics.py           # Prometheus metric definitions
-│   ├── prometheus.yml       # Prometheus scrape config
-│   └── grafana-datasources.yml
-├── frontend/
-│   └── src/
-│       ├── app/             # Next.js App Router pages
-│       ├── lib/api.ts       # TypeScript API client
-│       └── components/      # React components
-├── tests/
-│   ├── unit/                # Unit tests (mocked deps)
-│   ├── integration/         # API integration tests
-│   └── e2e/                 # End-to-end tests (requires Ollama)
-├── deployment/
-│   └── docker/              # Dockerfiles
-├── docker-compose.yml
-├── requirements.txt
-└── pyproject.toml
-```
+## Results
 
----
+Generated by `rag-eval matrix` from full runs on the human-verified golden set. Each row
+links to its run report. Until those runs exist, this section stays a placeholder: no
+number here is ever typed by hand.
 
-## Using the MCP Server
+<!-- results:start (generated by `rag-eval matrix`; do not edit) -->
+_No published results yet: the golden dataset is still under human review._
+<!-- results:end -->
 
-The MCP server runs over stdio and exposes these tools:
-
-| Tool                  | Description                                      |
-|-----------------------|--------------------------------------------------|
-| `search_documents`    | Semantic search over ingested documents          |
-| `ingest_document`     | Ingest a file from a local path                  |
-| `list_documents`      | List all documents with metadata                 |
-| `get_document`        | Get a single document by ID                      |
-| `delete_document`     | Remove a document and all its chunks             |
-| `ask_question`        | Full RAG Q&A with citations                      |
-| `get_collection_stats`| Vector store statistics                          |
-
-### Run the MCP server directly
+## Running experiments
 
 ```bash
-python mcp_server/server.py
+rag-eval run --config configs/baseline.yaml --dataset data/golden/v1.jsonl
+rag-eval compare results/<run-A> results/<run-B>     # paired deltas + items that got worse
+rag-eval matrix --base configs/baseline.yaml          # 2 chunkers x 3 retrievers x reranker
 ```
 
-### Connect from Claude Desktop
+Useful flags: `--limit N` (first N items), `--retrieval-only` (no LLM, fast),
+`--no-judge`, `--eval-config configs/eval.yaml` (judge model, prices).
+`python -m rag.cli` is equivalent to `rag-eval` (needed where policy blocks new `.exe`
+launchers, as on the Windows development machine).
 
-Add to `claude_desktop_config.json`:
+## CI regression gate
 
-```json
-{
-  "mcpServers": {
-    "localrag": {
-      "command": "python",
-      "args": ["/path/to/localrag/mcp_server/server.py"]
-    }
-  }
-}
-```
+Every pull request runs `.github/workflows/eval-gate.yml`: the 40-item smoke subset is
+evaluated against `results/baseline.json` **from the base branch**, a before/after table
+is posted as a PR comment, and the PR fails if recall@5 or faithfulness drops by more
+than 3 points with a 95% paired-bootstrap interval entirely below zero. The
+`accept-regression` label lets an intentional trade-off through (the comment still shows
+it). A nightly job (`eval-full.yml`) replays the full evaluation.
 
----
+CI never runs a model. It replays a **recorded cache** of the exact model calls the
+evaluation makes; free CI runners cannot run an 8B LLM at a usable speed. If a PR needs
+calls that were never recorded (a new prompt, chunker or model), the gate stops with a
+cache miss instead of guessing, and you record them locally.
 
-## Ingesting Documents
-
-### Method 1: Drop files in the watch folder
-```bash
-cp my-report.pdf ./data/watch_folder/
-# Auto-ingested within seconds
-```
-
-### Method 2: Upload via API
-```bash
-curl -X POST http://localhost:8000/api/documents/upload \
-  -F "file=@my-report.pdf"
-```
-
-### Method 3: Upload via UI
-Click the **Documents** button in the sidebar → Upload document.
-
----
-
-## API Reference
-
-See full interactive docs at: **http://localhost:8000/docs**
-
-### Key endpoints
+The golden data stays private, in a separate repository:
 
 ```
-POST   /api/sessions                      Create chat session
-GET    /api/sessions                      List sessions
-GET    /api/sessions/{id}                 Get session + messages
-DELETE /api/sessions/{id}                 Delete session
-
-POST   /api/sessions/{id}/chat            Send message (blocking)
-GET    /api/sessions/{id}/chat/stream     Send message (SSE streaming)
-
-POST   /api/documents/upload              Upload + ingest file
-GET    /api/documents                     List documents
-GET    /api/documents/{id}                Get document
-DELETE /api/documents/{id}                Delete document
-GET    /api/documents/stats               Vector store stats
-
-GET    /health                            Health check
-GET    /metrics                           Prometheus metrics
+<you>/localrag-eval-data (private)
+  golden/v1.jsonl  golden/smoke.jsonl  manifests/fastapi.json
+  cache/smoke.sqlite  cache/full.sqlite
 ```
 
----
+One-time setup:
+1. Create the private repository and clone it next to this one (`../localrag-eval-data`).
+2. Create a fine-grained GitHub token with read-only **Contents** access to that
+   repository only. Add it to this repository as the secret `EVAL_DATA_TOKEN`, and add the
+   variable `EVAL_DATA_REPO` = `<you>/localrag-eval-data`.
+3. After the golden set is reviewed and built:
 
-## Configuration
+   ```bash
+   make smoke          # python -m rag.golden smoke --n 40 --seed 11
+   make export-data    # copies dataset, smoke subset and manifest into ../localrag-eval-data
+   make baseline       # writes results/baseline.json and records cache/smoke.sqlite
+   make record-full    # records cache/full.sqlite for the nightly job
+   ```
 
-All settings live in `config/settings.yaml`. Key options:
+   Commit `results/baseline.json` here and push the data repository.
 
-```yaml
-ollama:
-  chat_model: "llama3"        # Change to mistral, phi3, etc.
-  embed_model: "nomic-embed-text"
+When a PR changes model calls: run `make gate` (records the new calls into the bundle and
+shows the gate result locally), push the data repository, and re-run the PR job. After
+merging an intended quality change, run `make baseline` on `main` and commit it.
+Forked PRs have no access to the secret, so the gate is skipped there with a notice.
 
-ingestion:
-  chunk_size: 512             # Characters per chunk
-  chunk_overlap: 64           # Overlap between chunks
+## Layout
 
-retrieval:
-  top_k: 5                    # Chunks to retrieve per query
-  score_threshold: 0.3        # Min similarity score (0–1)
-
-security:
-  api_key_enabled: false      # Set true + provide API_KEY to enable auth
+```
+rag/          the pipeline package (see DESIGN.md for every design decision)
+rag/golden/   golden dataset: schema, LLM drafting, review CLI, build
+rag/corpus.py reproducible corpus download and preparation
+configs/      one YAML file per experiment
+data/         local only (git-ignored): corpus manifest, corpora, golden dataset
+tests/        unit tests, one file per component
+DESIGN.md     trade-offs, rejected alternatives, known limitations
 ```
 
-Override any value with environment variables (see `.env.example`).
-
----
-
-## Running Tests
+## Development
 
 ```bash
-# Unit + integration (fast, no Ollama needed)
-pytest
-
-# With coverage report
-pytest --cov-report=html
-
-# Include E2E tests (requires running Ollama)
-pytest -m e2e
+ruff check . && ruff format --check . && mypy && actionlint && pytest
 ```
 
----
-
-## Observability
-
-- **Logs** — JSON structured logs at `./data/logs/app.log` and stdout
-- **Metrics** — Prometheus at `/metrics`, scraped every 10s
-- **Grafana** — http://localhost:3001 (user: `admin`, pass: `localrag`)
-
-Key metrics:
-- `localrag_queries_total` — total queries by session
-- `localrag_query_duration_seconds` — end-to-end latency
-- `localrag_llm_duration_seconds` — LLM generation time
-- `localrag_documents_ingested_total` — ingestion count
-- `localrag_chunks_total` — current chunk count
-
----
-
-## Changing the LLM
-
-```bash
-# Pull a different model
-ollama pull mistral
-
-# Edit config/settings.yaml
-ollama:
-  chat_model: "mistral"
-
-# Restart the backend
-docker compose restart backend
-```
-
-Popular options: `llama3`, `mistral`, `phi3`, `gemma2`, `qwen2`.
-
----
-
-## Security Notes
-
-- All processing is local — no data ever leaves your machine
-- Enable API key auth for multi-user setups: set `API_KEY_ENABLED=true` and `API_KEY=your-secret`
-- CORS is restricted to `localhost:3000` by default
-- The non-root Docker user prevents container privilege escalation
-
----
-
-## Troubleshooting
-
-See `docs/TROUBLESHOOTING.md` for common issues.
-
----
-
-## License
-
-MIT
+CI runs the same commands on every pull request.

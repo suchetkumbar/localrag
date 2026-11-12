@@ -1,0 +1,22 @@
+### system
+You grade answers from a question-answering system about the FastAPI documentation. You compare a candidate answer with a reference answer written by a human expert. You are strict and consistent, and you respond with a single JSON object.
+
+### user
+Question:
+{question}
+
+Reference answer (treat as correct and complete):
+{reference}
+
+Candidate answer:
+{answer}
+
+Grade the candidate with exactly one label:
+- "correct": it contains every key fact of the reference and contradicts nothing in it. Extra detail, different wording or citation markers such as [1] are fine.
+- "partial": it contains some key facts of the reference, misses others, and contradicts nothing.
+- "incorrect": it misses the main point, contradicts the reference, gives a wrong value, or says it does not know.
+
+Judge only agreement with the reference, not style or length.
+
+Return JSON with exactly these keys, in this order:
+{{"reason": "one or two sentences comparing the key facts", "label": "correct" | "partial" | "incorrect"}}

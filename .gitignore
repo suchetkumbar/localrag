@@ -1,57 +1,40 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg
 *.egg-info/
-dist/
 build/
-.eggs/
-venv/
+dist/
 .venv/
-env/
+venv/
 
-# Testing
+# Tooling
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 coverage.xml
-coverage_html/
 htmlcov/
 
-# Data (never commit local data)
-data/chroma/
-data/db/
-data/logs/
-data/uploads/
-data/watch_folder/
+# Model-call cache (rebuilt automatically)
+.cache/
 
-# Environment
+# Local data is never committed: raw and prepared corpora, the corpus manifest, golden
+# drafts and the built dataset. Only the data card (documentation) is tracked.
+/data/*
+!/data/golden/
+/data/golden/*
+!/data/golden/README.md
+
+# Experiment results: reports and metrics are committed; per-item files contain golden
+# questions and answers, which stay local like the dataset.
+results/**/items.jsonl
+
+# Secrets and personal notes
 .env
-!.env.example
+context/
 
-# Node
-node_modules/
-frontend/.next/
-frontend/out/
-frontend/.turbo/
-
-# IDE
+# Editors / OS
 .vscode/
 .idea/
 *.swp
-*.swo
 .DS_Store
-
-# Docker
-*.log
-
-# mypy
-.mypy_cache/
-
-# ruff
-.ruff_cache/
-
-# readme
-context/
